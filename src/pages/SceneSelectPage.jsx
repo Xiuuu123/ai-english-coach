@@ -2,6 +2,7 @@ import { useState, useMemo, useDeferredValue, useTransition } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { scenes } from '../data/scenes'
 import { useLevelProgress } from '../hooks/useLevelProgress'
+import DailyGoalCard from '../components/DailyGoalCard'
 
 /* ====== 分类元数据 ====== */
 const CATEGORIES = [
@@ -73,24 +74,15 @@ export default function SceneSelectPage() {
 
         {/* CTA 卡片 */}
         <section className="mb-8">
-          <div className="relative overflow-hidden rounded-2xl p-6 sm:p-8"
-            style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(168,85,247,0.2) 100%)', border: '1px solid rgba(99,102,241,0.2)' }}>
-            <div className="relative z-10">
-              <h2 className="text-xl sm:text-2xl font-bold">今日口语练习</h2>
-              <p className="text-slate-400 text-sm mt-1.5">每天开口 5 分钟，口语大不同</p>
-              <div className="mt-5 max-w-xs">
-                <div className="flex justify-between items-end mb-1.5">
-                  <span className="text-xs text-slate-500">今日目标进度</span>
-                  <span className="text-xs font-bold text-indigo-400">{Math.min(100, filteredScenes.length * 33)}%</span>
-                </div>
-                <div className="w-full h-2 bg-slate-700/50 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, filteredScenes.length * 33)}%` }} />
-                </div>
-              </div>
-            </div>
-            <div className="absolute -right-8 -bottom-8 opacity-10 text-8xl pointer-events-none select-none">🤖</div>
-          </div>
+          {/* v11: 今日口语练习目标卡（真实数据 + 进度条 + 庆祝动画） */}
+          <DailyGoalCard
+            goalSeconds={300}
+            onStart={() => {
+              // 默认进入第一个场景
+              const first = scenes[0]
+              if (first) navigate(`/chat/${first.id}/0`)
+            }}
+          />
         </section>
 
         {/* 搜索框 */}

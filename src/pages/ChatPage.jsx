@@ -8,6 +8,7 @@ import { useConversationPersistence } from '../hooks/useConversationPersistence'
 import { useProgressTracker } from '../hooks/useProgressTracker'
 import { useMembership, FREE_CHAT_LIMIT } from '../hooks/useMembership'
 import { useLevelProgress } from '../hooks/useLevelProgress'
+import { useDailyGoal } from '../hooks/useDailyGoal'
 import { sendMessage, MAX_RETRIES, prewarmConnection } from '../services/chatService'
 import DeviceSelector from '../components/DeviceSelector'
 import PronunciationCard from '../components/PronunciationCard'
@@ -20,6 +21,7 @@ import TTSControlBar, { useTTSSettings } from '../components/TTSControlBar'
 import ErrorHighlightedSentence from '../components/ErrorHighlightedSentence'
 import RealTimeCorrectionPanel from '../components/RealTimeCorrectionPanel'
 import VoiceMessageBubble from '../components/VoiceMessageBubble'
+import DailyGoalCard from '../components/DailyGoalCard'
 import {
   playRecordStartSound,
   playRecordEndSound,
@@ -40,6 +42,9 @@ export default function ChatPage() {
 
   // 关卡进度
   const { isLevelCompleted, isSceneAllCompleted, completeLevel, awardBadge, hasBadge } = useLevelProgress()
+
+  // 每日练习目标追踪
+  const { addPractice } = useDailyGoal(300)
 
   // 状态管理
   const { messages, setMessages, isRestored, clearConversation } = useConversationPersistence(`${sceneId}-l${levelIndex}`)
@@ -189,7 +194,12 @@ export default function ChatPage() {
             playRecordEndSound()
             const text = (transcript || interimText)?.trim() || ''
             setTranscript('')
-            if (text) { playSendSound(); handleSend(text) }
+            if (text) {
+              // v11: 键盘录音发送 → 累计到今日练习时长
+              addPractice(Math.max(recordingSeconds, 1))
+              playSendSound()
+              handleSend(text)
+            }
           }
           break
         case 'Escape': // ESC：停止 TTS 播放
@@ -389,7 +399,12 @@ export default function ChatPage() {
     // 从 ref 读取最新文本，避免闭包陷阱
     const text = (transcriptRef.current || interimTextRef.current)?.trim() || ''
     setTranscript('')
-    if (text) { playSendSound(); handleSend(text) }
+    if (text) {
+      // v11: 录音成功发送 → 累计到今日练习时长（向上取整至少 1 秒）
+      addPractice(Math.max(recordingSeconds, 1))
+      playSendSound()
+      handleSend(text)
+    }
   }
 
   // v9: 桌面端取消按钮点击
@@ -591,6 +606,11 @@ export default function ChatPage() {
         </div>
         </div>
       </header>
+
+      {/* ===== v11: 今日口语练习目标卡（紧凑模式，紧贴顶部） ===== */}
+      <div className="max-w-3xl mx-auto w-full px-3 sm:px-4 pt-2.5">
+        <DailyGoalCard compact goalSeconds={300} />
+      </div>
 
       {/* ===== v4: AI 介绍条（借鉴 chat 原型，适配暗色主题） ===== */}
       <div className="max-w-3xl mx-auto w-full px-3 sm:px-4">
