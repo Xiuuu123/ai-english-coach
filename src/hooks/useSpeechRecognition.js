@@ -60,6 +60,9 @@ export function useSpeechRecognition() {
   const audioChunksRef = useRef([])
   const lastAudioBlobRef = useRef(null)       // 最近一次完成的 Blob
   const [lastAudioUrl, setLastAudioUrl] = useState(null)  // 回放 URL
+  // v8: 录音时长（秒），用于语音气泡展示
+  const recordingStartTimeRef = useRef(0)
+  const [lastAudioDuration, setLastAudioDuration] = useState(0)
 
   function startMediaRecording() {
     try {
@@ -260,6 +263,7 @@ export function useSpeechRecognition() {
     isHoldingRef.current = true
     isCancelRef.current = false  // v8: 重置取消标记
     setIsCancelMode(false)       // v8: 重置取消状态
+    recordingStartTimeRef.current = Date.now()  // v8: 记录录音开始时间
     accumulatedRef.current = ''
     setTranscript('')
     setInterimText('')
@@ -285,6 +289,12 @@ export function useSpeechRecognition() {
 
     // v8: 停止录制
     stopMediaRecording()
+
+    // v8: 计算录音时长（秒）
+    if (recordingStartTimeRef.current) {
+      const dur = Math.round((Date.now() - recordingStartTimeRef.current) / 1000)
+      setLastAudioDuration(dur > 0 ? dur : 1)
+    }
 
     const finalText = accumulatedRef.current
     if (finalText?.trim()) {
@@ -332,5 +342,5 @@ export function useSpeechRecognition() {
     }
   }, [])
 
-  return { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, isCancelMode, setIsCancelMode, startListening, stopListening, cancelListening, setTranscript }
+  return { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, lastAudioDuration, isCancelMode, setIsCancelMode, startListening, stopListening, cancelListening, setTranscript }
 }

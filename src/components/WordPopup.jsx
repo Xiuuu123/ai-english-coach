@@ -321,7 +321,7 @@ const DICT = {
 }
 
 // 查询词典
-function lookupDict(word) {
+export function lookupDict(word) {
   if (!word) return null
   const lower = word.toLowerCase().replace(/[^a-z'-]/g, '')
   return DICT[lower] || null

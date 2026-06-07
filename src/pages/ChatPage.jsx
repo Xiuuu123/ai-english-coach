@@ -19,6 +19,7 @@ import WordPopup, { tokenizeForRender } from '../components/WordPopup'
 import TTSControlBar, { useTTSSettings } from '../components/TTSControlBar'
 import ErrorHighlightedSentence from '../components/ErrorHighlightedSentence'
 import RealTimeCorrectionPanel from '../components/RealTimeCorrectionPanel'
+import VoiceMessageBubble from '../components/VoiceMessageBubble'
 import {
   playRecordStartSound,
   playRecordEndSound,
@@ -74,7 +75,7 @@ export default function ChatPage() {
   const abortRef = useRef(null)
 
   // Hooks
-  const { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, isCancelMode, setIsCancelMode, startListening, stopListening, cancelListening, setTranscript } = useSpeechRecognition()
+  const { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, lastAudioDuration, isCancelMode, setIsCancelMode, startListening, stopListening, cancelListening, setTranscript } = useSpeechRecognition()
   const { speak, stop: stopTTS, setAccent: setTTSAccent } = useTTS()
   // v8: 口语对话控制栏设置（语速 / 口音 / 风格）
   const ttsSettings = useTTSSettings()
@@ -225,11 +226,11 @@ export default function ChatPage() {
     // 取消之前的流式请求
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
 
-    // v8: 把当前录制的语音 URL 绑定到 userMsg（如果有）— 用于重播
+    // v8: 把当前录制的语音 URL 和时长绑定到 userMsg（如果有）— 用于重播和气泡展示
     const userMsg = {
       role: 'user',
       content: trimmed,
-      ...(lastAudioUrl ? { audioUrl: lastAudioUrl } : {}),
+      ...(lastAudioUrl ? { audioUrl: lastAudioUrl, audioDuration: lastAudioDuration } : {}),
     }
     setMessages(prev => [...prev, userMsg])
     setIsLoading(true)
@@ -586,7 +587,8 @@ export default function ChatPage() {
               <MessageBubble
                 message={msg}
                 onReplay={(t) => speak(t, { rate: ttsRate })}
-                onWordClick={msg.role === 'assistant' ? (word, rect) => setWordPopup({ word, anchorRect: rect }) : undefined}
+                onPlayWord={(w) => speak(w, { rate: ttsRate })}
+                onWordClick={msg.role === 'assistant' || msg.audioUrl ? (word, rect) => setWordPopup({ word, anchorRect: rect }) : undefined}
               />
               {/* v8: AI 纠错时在用户原句上单词级高亮 */}
               {msg.role === 'assistant' && msg.corrections?.length > 0 && prevUserText && (
@@ -1016,10 +1018,22 @@ const WelcomeCard = memo(function WelcomeCard({ scene, onStart }) {
 })
 
 /** 消息气泡 — v2 增加多维度评分展示（React.memo 优化） */
-const MessageBubble = memo(function MessageBubble({ message, onReplay, onWordClick, isStreaming }) {
+const MessageBubble = memo(function MessageBubble({ message, onReplay, onWordClick, onPlayWord, isStreaming }) {
   const isUser = message.role === 'user'
   const userAudioRef = useRef(null)  // v8: 用户语音重播 ref
   const [userAudioPlaying, setUserAudioPlaying] = useState(false)
+
+  // v8: 用户语音气泡 → 使用 VoiceMessageBubble 组件
+  if (isUser && message.audioUrl) {
+    return (
+      <VoiceMessageBubble
+        message={message}
+        onWordClick={onWordClick}
+        onPlayWord={onPlayWord}
+        onReplay={onReplay ? () => { /* 由 VoiceMessageBubble 自行处理 */ } : undefined}
+      />
+    )
+  }
 
   // v8: 重播用户自己的语音
   const replayUserAudio = () => {
