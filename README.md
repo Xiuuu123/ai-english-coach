@@ -16,6 +16,9 @@
 
 🔗 **在线体验**: [xiuuu123.github.io/ai-english-coach](https://xiuuu123.github.io/ai-english-coach/)
 📦 **仓库地址**: [github.com/Xiuuu123/ai-english-coach](https://github.com/Xiuuu123/ai-english-coach)
+🎬 项目演示 Demo 视频
+> **点击链接直接在线观看（无需下载或注册网盘）**  
+https://www.bilibili.com/video/BV176Et6sExM?vd_source=352d038b6321dc9421969cccfa145e7b
 
 ---
 
