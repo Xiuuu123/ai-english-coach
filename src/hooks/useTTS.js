@@ -32,6 +32,25 @@ export function useTTS() {
   // 当前播放的 utterance 引用（用于打断）
   const currentUtteranceRef = useRef(null)
 
+  // v8: 当前口音（'us' | 'uk'）— 用于语音选择
+  const accentRef = useRef('us')
+
+  /**
+   * 设置口音（供外部调用）
+   * @param {'us'|'uk'} accent
+   */
+  const setAccent = useCallback((accent) => {
+    accentRef.current = accent
+    // 重新选择匹配的语音
+    if (window.speechSynthesis) {
+      const voices = window.speechSynthesis.getVoices()
+      if (voices.length > 0) {
+        cachedVoiceRef.current = selectBestEnglishVoice(voices, accent)
+        console.log(`[TTS] Accent changed to ${accent}, voice:`, cachedVoiceRef.current?.name)
+      }
+    }
+  }, [])
+
   // 页面加载后立即预加载语音列表 + 引擎预热
   useEffect(() => {
     if (!window.speechSynthesis) return
@@ -39,7 +58,7 @@ export function useTTS() {
     const loadVoices = () => {
       const voices = window.speechSynthesis.getVoices()
       if (voices.length > 0) {
-        cachedVoiceRef.current = selectBestEnglishVoice(voices)
+        cachedVoiceRef.current = selectBestEnglishVoice(voices, accentRef.current)
         voicesLoadedRef.current = true
         console.log('[TTS] Voices preloaded:', cachedVoiceRef.current?.name)
       }
@@ -71,26 +90,37 @@ export function useTTS() {
   }, [])
 
   /**
-   * 选择最佳英文语音（优先级队列）
+   * 选择最佳英文语音（按口音优先级匹配）
+   * @param {SpeechSynthesisVoice[]} voices
+   * @param {'us'|'uk'} accent - 'us' 美式 (en-US) / 'uk' 英式 (en-GB)
    */
-  function selectBestEnglishVoice(voices) {
-    const priority = [
-      'Samantha', 'Google US English', 'Microsoft Zira',
-      'Microsoft David', 'Microsoft Mark', 'Google UK English Female',
-      'Google UK English Male', 'Karen', 'Daniel',
-    ]
+  function selectBestEnglishVoice(voices, accent = 'us') {
+    const langPrefix = accent === 'uk' ? 'en-GB' : 'en-US'
+
+    // 优选列表（按口音分别给出）
+    const priority = accent === 'uk'
+      ? [
+          'Google UK English Female', 'Google UK English Male',
+          'Microsoft George', 'Microsoft Hazel', 'Daniel', 'Karen',
+        ]
+      : [
+          'Samantha', 'Google US English', 'Microsoft Zira',
+          'Microsoft David', 'Microsoft Mark', 'Alex',
+        ]
 
     for (const name of priority) {
       const found = voices.find(v => v.name.includes(name))
       if (found) return found
     }
 
-    const usFemale = voices.find(v => v.lang === 'en-US' && v.name.toLowerCase().includes('female'))
-    if (usFemale) return usFemale
+    // 优选列表没有就按 lang 前缀匹配
+    const sameLang = voices.find(v => v.lang === langPrefix)
+    if (sameLang) return sameLang
 
-    const us = voices.find(v => v.lang.startsWith('en-US'))
-    if (us) return us
+    const langFamily = voices.find(v => v.lang.startsWith(langPrefix))
+    if (langFamily) return langFamily
 
+    // 兜底：任何英文语音
     return voices.find(v => v.lang.startsWith('en'))
   }
 
@@ -125,7 +155,7 @@ export function useTTS() {
     }
 
     const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'en-US'
+    utterance.lang = accentRef.current === 'uk' ? 'en-GB' : 'en-US'
     utterance.rate = options.rate ?? 0.92
     utterance.pitch = options.pitch ?? 1.0
     utterance.volume = options.volume ?? 1.0
@@ -186,7 +216,7 @@ export function useTTS() {
 
     // 短文本直接播放
     const utterance = new SpeechSynthesisUtterance(trimmed)
-    utterance.lang = 'en-US'
+    utterance.lang = accentRef.current === 'uk' ? 'en-GB' : 'en-US'
     utterance.rate = options.rate ?? 0.92
     utterance.pitch = options.pitch ?? 1.0
     utterance.volume = options.volume ?? 1.0
@@ -240,5 +270,5 @@ export function useTTS() {
     return voicesLoadedRef.current && !!cachedVoiceRef.current
   }, [])
 
-  return { speak, stop, resetVoice, isReady }
+  return { speak, stop, resetVoice, isReady, setAccent }
 }

@@ -63,7 +63,7 @@ function cacheKey(sceneId, history) {
  * - 优化 prompt 长度减少 prefill 时间
  * - 缓存命中直接返回，节省 ~1-2s
  */
-export async function sendMessage(sceneId, history, onStreamChunk, systemPromptOverride) {
+export async function sendMessage(sceneId, history, onStreamChunk, systemPromptOverride, conversationStyle = 'casual') {
   const scene = scenes.find(s => s.id === sceneId)
   if (!scene) throw new Error(`Unknown scene: ${sceneId}`)
 
@@ -93,8 +93,24 @@ CORRECTION OUTPUT RULES:
 - Only output [Correction] block when there is at least one real error to fix.
 - If the user has no error, keep the response short and encouraging.`
 
+  // v8: 对话风格指令 — 根据用户切换的口语化/书面化动态注入
+  const styleInstruction = conversationStyle === 'formal'
+    ? `\n\nCONVERSATION STYLE: FORMAL/WRITTEN
+- Use complete, grammatically precise sentences.
+- Avoid contractions (use "do not" instead of "don't", "I will" instead of "I'll").
+- Use professional vocabulary and formal transitions (Furthermore, Moreover, In addition).
+- Maintain a structured, polite, business-appropriate tone.
+- Suitable for: job interviews, business meetings, academic discussions.`
+    : `\n\nCONVERSATION STYLE: CASUAL/SPOKEN
+- Use natural, conversational English with everyday expressions.
+- Embrace contractions (I'm, don't, wanna, gonna are all fine).
+- Use filler words and discourse markers occasionally (well, you know, like, I mean).
+- Keep sentences short and punchy, like real conversation.
+- Use casual phrasings (Hey, Sure thing, No worries, Sounds good).
+- Suitable for: small talk, daily conversations, friendly chats.`
+
   const messages = [
-    { role: 'system', content: systemPrompt + pronunciationInstruction },
+    { role: 'system', content: systemPrompt + pronunciationInstruction + styleInstruction },
     ...formattedHistory,
   ]
 

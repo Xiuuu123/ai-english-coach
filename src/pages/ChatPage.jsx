@@ -16,6 +16,7 @@ import MembershipModal from '../components/MembershipModal'
 import LevelSelect from '../components/LevelSelect'
 import BadgeModal from '../components/BadgeModal'
 import WordPopup, { tokenizeForRender } from '../components/WordPopup'
+import TTSControlBar, { useTTSSettings } from '../components/TTSControlBar'
 import {
   playRecordStartSound,
   playRecordEndSound,
@@ -70,7 +71,15 @@ export default function ChatPage() {
 
   // Hooks
   const { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, startListening, stopListening, setTranscript } = useSpeechRecognition()
-  const { speak, stop: stopTTS } = useTTS()
+  const { speak, stop: stopTTS, setAccent: setTTSAccent } = useTTS()
+  // v8: 口语对话控制栏设置（语速 / 口音 / 风格）
+  const ttsSettings = useTTSSettings()
+  const { rate: ttsRate, accent: ttsAccent, style: conversationStyle, setRate: setTTSRate, setAccent: setTTSAccentLocal, setStyle: setConversationStyle } = ttsSettings
+
+  // v8: 当口音变化时通知 TTS Hook 重新选择语音
+  useEffect(() => {
+    setTTSAccent?.(ttsAccent)
+  }, [ttsAccent, setTTSAccent])
   const { microphones, speakers, selectedMicId, selectedSpeakerId, setSelectedMicId, setSelectedSpeakerId, isDeviceReady, error: deviceError, permission, refreshDevices } = useAudioDevices()
   const { state: progressState, recordSession } = useProgressTracker()
   const {
@@ -241,7 +250,7 @@ export default function ChatPage() {
         // 流式调用：onStreamChunk 回调实时更新 UI
         const result = await sendMessage(sceneId, history, (chunkText) => {
           setStreamText(chunkText)
-        }, level?.systemPrompt)
+        }, level?.systemPrompt, conversationStyle)
 
         // 流式结束，显示最终结果
         setIsStreaming(false)
@@ -251,7 +260,7 @@ export default function ChatPage() {
         setMessages(prev => [...prev, aiMsg])
 
         // TTS 播放 + 音效
-        speak(result.reply, { outputDeviceId: selectedSpeakerId })
+        speak(result.reply, { outputDeviceId: selectedSpeakerId, rate: ttsRate })
         if (result.corrections?.length > 0) setShowCorrections(true)
         playReceiveSound()
 
@@ -456,6 +465,16 @@ export default function ChatPage() {
             </button>
           )}
           <DeviceSelector {...{ microphones, speakers, selectedMicId, selectedSpeakerId, onMicChange: setSelectedMicId, onSpeakerChange: setSelectedSpeakerId, isDeviceReady, error: deviceError, permission, refreshDevices }} />
+          {/* v8: 口语对话控制栏 — 语速 / 口音 / 风格 */}
+          <TTSControlBar
+            compact
+            rate={ttsRate}
+            accent={ttsAccent}
+            style={conversationStyle}
+            onRateChange={setTTSRate}
+            onAccentChange={setTTSAccentLocal}
+            onStyleChange={setConversationStyle}
+          />
           <button onClick={() => setShowEndModal(true)}
             className="text-xs sm:text-sm font-medium px-2.5 sm:px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors active:scale-95">
             结束练习
@@ -498,7 +517,7 @@ export default function ChatPage() {
             <div key={idx}>
               <MessageBubble
                 message={msg}
-                onReplay={(t) => speak(t)}
+                onReplay={(t) => speak(t, { rate: ttsRate })}
                 onWordClick={msg.role === 'assistant' ? (word, rect) => setWordPopup({ word, anchorRect: rect }) : undefined}
               />
               {isLastUser && msg.content && (
@@ -802,7 +821,7 @@ export default function ChatPage() {
           word={wordPopup.word}
           anchorRect={wordPopup.anchorRect}
           onClose={() => setWordPopup(null)}
-          onSpeak={(w) => speak(w)}
+          onSpeak={(w) => speak(w, { rate: ttsRate })}
         />
       )}
     </div>
