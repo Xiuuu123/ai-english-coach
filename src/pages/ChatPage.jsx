@@ -84,6 +84,9 @@ export default function ChatPage() {
   const sendingRef = useRef(false)
   // 流式响应控制器 — 用于取消正在进行的请求
   const abortRef = useRef(null)
+  // v14: 缓存语音识别最新 audioUrl / 时长（避免 handleSend 闭包拿到空值）
+  const lastAudioUrlRef = useRef(null)
+  const lastAudioDurationRef = useRef(null)
 
   // Hooks
   const { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, lastAudioDuration, isCancelMode, setIsCancelMode, startListening, stopListening, cancelListening, setTranscript } = useSpeechRecognition()
@@ -204,7 +207,10 @@ export default function ChatPage() {
               // v11: 键盘录音发送 → 累计到今日练习时长
               addPractice(Math.max(recordingSeconds, 1))
               playSendSound()
-              handleSend(text)
+              // v14: 语音渠道发送 — 锁定 inputMode 并透传 audioUrl
+              const url = lastAudioUrlRef.current
+              setInputMode(url ? 'voice' : 'text', 'voice-send-key')
+              handleSend(text, { inputMode: url ? 'voice' : 'text', audioUrl: url, audioDuration: lastAudioDurationRef.current })
             }
           }
           break
@@ -230,7 +236,7 @@ export default function ChatPage() {
    * - 流式响应(SSE)：AI 回复逐字显示，首字延迟降低 60%+
    * - 支持取消请求（新消息到来时自动取消旧的）
    */
-  const handleSend = useCallback(async (text) => {
+  const handleSend = useCallback(async (text, options = {}) => {
     const trimmed = text.trim()
     if (!trimmed || isLoading || sendingRef.current) return
     if (trimmed === lastSentRef.current) return
@@ -250,16 +256,19 @@ export default function ChatPage() {
     // 取消之前的流式请求
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
 
-    // v13: 根据实际发送渠道决定 inputMode（语音录音带 audioUrl = voice，纯文本 = text）
-    const effectiveMode = lastAudioUrl ? 'voice' : 'text'
+    // v14: 优先用调用方传入的 inputMode / audioUrl（语音渠道已显式传入），
+    //      回退到 closure 状态（文字渠道）
+    const effectiveMode = options.inputMode || (lastAudioUrlRef.current ? 'voice' : 'text')
+    const effectiveAudioUrl = options.audioUrl !== undefined ? options.audioUrl : lastAudioUrlRef.current
+    const effectiveAudioDuration = options.audioDuration !== undefined ? options.audioDuration : lastAudioDurationRef.current
     setInputMode(effectiveMode, 'send')
 
     // v8: 把当前录制的语音 URL 和时长绑定到 userMsg（如果有）— 用于重播和气泡展示
     const userMsg = {
       role: 'user',
       content: trimmed,
-      inputMode: effectiveMode, // v13: 记录本条消息的输入模式
-      ...(lastAudioUrl ? { audioUrl: lastAudioUrl, audioDuration: lastAudioDuration } : {}),
+      inputMode: effectiveMode, // v13/v14: 记录本条消息的输入模式
+      ...(effectiveAudioUrl ? { audioUrl: effectiveAudioUrl, audioDuration: effectiveAudioDuration } : {}),
     }
     setMessages(prev => [...prev, userMsg])
     setIsLoading(true)
@@ -331,7 +340,7 @@ export default function ChatPage() {
     sendingRef.current = false
     setIsLoading(false)
     setTranscript('')
-  }, [sceneId, messages, isLoading, selectedSpeakerId, retryCount, canSend, consumeUsage])
+  }, [sceneId, messages, isLoading, selectedSpeakerId, retryCount, canSend, consumeUsage, setInputMode])
 
   /** 手动重试 */
   function handleRetry() {
@@ -359,6 +368,9 @@ export default function ChatPage() {
   // 同步 transcript/interimText 到 ref（供 handlePointerUp 读取最新值）
   useEffect(() => { transcriptRef.current = transcript }, [transcript])
   useEffect(() => { interimTextRef.current = interimText }, [interimText])
+  // v14: 同步 lastAudioUrl / lastAudioDuration 到 ref（handleSend 闭包不会拿到空值）
+  useEffect(() => { lastAudioUrlRef.current = lastAudioUrl }, [lastAudioUrl])
+  useEffect(() => { lastAudioDurationRef.current = lastAudioDuration }, [lastAudioDuration])
 
   function handlePointerDown(e) {
     e.preventDefault()
@@ -416,7 +428,11 @@ export default function ChatPage() {
       // v11: 录音成功发送 → 累计到今日练习时长（向上取整至少 1 秒）
       addPractice(Math.max(recordingSeconds, 1))
       playSendSound()
-      handleSend(text)
+      // v14: 语音渠道发送 — 提前锁定 inputMode 并把 audioUrl 缓存到 ref
+      // 避免 handleSend 内部 lastAudioUrl 闭包已被 stopListening 清空
+      const url = lastAudioUrlRef.current
+      setInputMode(url ? 'voice' : 'text', 'voice-send')
+      handleSend(text, { inputMode: url ? 'voice' : 'text', audioUrl: url, audioDuration: lastAudioDurationRef.current })
     }
   }
 
