@@ -18,6 +18,7 @@ import BadgeModal from '../components/BadgeModal'
 import WordPopup, { tokenizeForRender } from '../components/WordPopup'
 import TTSControlBar, { useTTSSettings } from '../components/TTSControlBar'
 import ErrorHighlightedSentence from '../components/ErrorHighlightedSentence'
+import RealTimeCorrectionPanel from '../components/RealTimeCorrectionPanel'
 import {
   playRecordStartSound,
   playRecordEndSound,
@@ -55,11 +56,13 @@ export default function ChatPage() {
   // v5: 会员开通弹窗
   const [showVipModal, setShowVipModal] = useState(false)
   const [vipModalReason, setVipModalReason] = useState('limit')
-  // v7: 关卡选择弹窗 & 通关弹窗 & 勋章弹窗
+  // v8: 关卡选择弹窗 & 通关弹窗 & 勋章弹窗
   const [showLevelSelect, setShowLevelSelect] = useState(false)
   const [showLevelComplete, setShowLevelComplete] = useState(false)
   // v8: 单词查询弹窗 — { word, anchorRect }
   const [wordPopup, setWordPopup] = useState(null)
+  // v8: 实时纠错面板 — 移动端抽屉开关
+  const [showCorrectionDrawer, setShowCorrectionDrawer] = useState(false)
   const [showBadgeModal, setShowBadgeModal] = useState(false)
   // 关卡内得分追踪（用于判断通关）
   const levelScoresRef = useRef([])
@@ -391,6 +394,33 @@ export default function ChatPage() {
   }
 
   if (!scene) return <div className="p-8 text-center text-slate-500">场景不存在</div>
+
+  // v8: 实时纠错面板数据 — 取最近一条带 corrections 的 AI 消息
+  const latestCorrectionEntry = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.role === 'assistant' && m.corrections && m.corrections.length > 0) {
+        // 找紧邻的用户消息
+        let userText = ''
+        for (let j = i - 1; j >= 0; j--) {
+          if (messages[j].role === 'user') { userText = messages[j].content || ''; break }
+        }
+        // 收集所有 corrections
+        const allCorrections = m.corrections
+        // 优化句：取第一条 correction 的 correction 字段拼成完整句不现实，
+        // 优先使用 AI 单独给出的 optimized 字段；否则从 corrections 派生
+        const optimized = m.optimized || m.correctedSentence || m.reply || ''
+        const explanation = m.explanation || m.summary || ''
+        return {
+          originalText: userText,
+          optimizedText: optimized,
+          explanation,
+          corrections: allCorrections,
+        }
+      }
+    }
+    return null
+  })()
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950">
@@ -850,6 +880,59 @@ export default function ChatPage() {
           onClose={() => setWordPopup(null)}
           onSpeak={(w) => speak(w, { rate: ttsRate })}
         />
+      )}
+
+      {/* v8: 实时纠错面板 — 桌面端固定右侧 + 移动端浮动按钮触发抽屉 */}
+      {latestCorrectionEntry && (
+        <>
+          {/* 桌面端（≥ lg）：固定右侧侧边栏 */}
+          <div className="hidden lg:block fixed right-0 top-0 bottom-0 w-80 xl:w-96 z-20 pointer-events-none">
+            <div className="h-full pointer-events-auto">
+              <RealTimeCorrectionPanel
+                originalText={latestCorrectionEntry.originalText}
+                optimizedText={latestCorrectionEntry.optimizedText}
+                explanation={latestCorrectionEntry.explanation}
+                corrections={latestCorrectionEntry.corrections}
+                onPlay={(t) => speak(t, { rate: ttsRate })}
+                variant="sidebar"
+              />
+            </div>
+          </div>
+
+          {/* 移动端：浮动按钮触发抽屉 */}
+          <button
+            onClick={() => setShowCorrectionDrawer(true)}
+            className="lg:hidden fixed right-3 bottom-24 z-30 px-3 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium shadow-lg shadow-indigo-500/30 active:scale-95 flex items-center gap-1.5"
+            aria-label="查看实时纠错"
+          >
+            <span>✨</span>
+            <span>纠错</span>
+            <span className="bg-white/25 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+              {latestCorrectionEntry.corrections.length}
+            </span>
+          </button>
+
+          {/* 移动端抽屉 */}
+          {showCorrectionDrawer && (
+            <div className="lg:hidden fixed inset-0 z-50 flex flex-col">
+              <div
+                className="absolute inset-0 bg-black/50"
+                onClick={() => setShowCorrectionDrawer(false)}
+              />
+              <div className="relative mt-auto h-[80vh] bg-slate-900 rounded-t-2xl shadow-2xl overflow-hidden animate-slideUp">
+                <RealTimeCorrectionPanel
+                  originalText={latestCorrectionEntry.originalText}
+                  optimizedText={latestCorrectionEntry.optimizedText}
+                  explanation={latestCorrectionEntry.explanation}
+                  corrections={latestCorrectionEntry.corrections}
+                  onPlay={(t) => speak(t, { rate: ttsRate })}
+                  onClose={() => setShowCorrectionDrawer(false)}
+                  variant="drawer"
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
