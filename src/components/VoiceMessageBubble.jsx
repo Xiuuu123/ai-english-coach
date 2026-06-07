@@ -2,14 +2,20 @@ import { useState, useRef, useCallback } from 'react'
 import { lookupDict, tokenizeForRender } from './WordPopup'
 
 /**
- * 语音消息气泡组件 v1
+ * 语音消息气泡组件 v2 (对齐图片样例)
+ *
+ * 布局（从右到左）：
+ *   [ME 徽章] [绿色胶囊气泡 🎙 4" 98分] [收起按钮]
+ *   [可选：文本 + 回听按钮]
+ *   [分词面板：紫色边框 + 独立单词卡片]
  *
  * 功能：
- * 1. 绿色语音气泡：右上角 "ME" 标识 + 麦克风图标 + 语音时长 + 发音评分
- * 2. 下方分词文本框：ASR 转写句子按单词拆分为独立卡片
- * 3. 单词卡片点击 → 浮窗展示 IPA + 中文释义 + 播放按钮
- * 4. 收起/展开控制：可隐藏/显示分词面板
- * 5. 评分数字点击 → 展开详细发音评测报告
+ * 1. 绿色胶囊形语音气泡：麦克风图标 + 语音时长 + 评分（圆角胶囊）
+ * 2. 绿色 ME 徽章外置在气泡右侧
+ * 3. 蓝色/紫色分词面板：单词独立可点击卡片
+ * 4. 单词卡片点击 → 浮窗展示 IPA + 中文释义 + 播放按钮
+ * 5. 收起/展开控制：与气泡同一行（与图片样例一致）
+ * 6. 评分数字点击 → 展开详细发音评测报告
  *
  * 兼容：与现有 WordPopup、PronunciationCard、TTS 无缝对接
  */
@@ -106,12 +112,13 @@ export default function VoiceMessageBubble({
       </div>
 
       <div className="max-w-[82%] sm:max-w-[75%] space-y-2">
-        {/* ===== 收起/展开按钮 ===== */}
-        {wordEntries.length > 0 && (
-          <div className="flex justify-end pr-0.5">
+        {/* ===== 顶部行：收起按钮 + 语音气泡 + ME 徽章 ===== */}
+        <div className="flex items-center gap-1.5 sm:gap-2 justify-end">
+          {/* 左侧：收起/展开按钮（与气泡同行，与图片样例一致） */}
+          {wordEntries.length > 0 && (
             <button
               onClick={() => setCollapsed(!collapsed)}
-              className="text-[10px] sm:text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] sm:text-xs text-slate-300 bg-slate-700/40 hover:bg-slate-600/50 border border-slate-600/40 hover:border-slate-500/60 transition-all"
               aria-label={collapsed ? '展开分词' : '收起分词'}
             >
               <span>{collapsed ? '展开' : '收起'}</span>
@@ -119,59 +126,69 @@ export default function VoiceMessageBubble({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
               </svg>
             </button>
-          </div>
-        )}
+          )}
 
-        {/* ===== 语音气泡主体 ===== */}
-        <div className="relative rounded-2xl rounded-tr-sm px-3.5 sm:px-4 py-2.5 sm:py-3 shadow-lg bg-gradient-to-br from-emerald-600/90 to-teal-700/90 border border-emerald-400/20"
-          style={{ boxShadow: '0 0 20px rgba(52,211,153,0.15), 0 4px 20px rgba(0,0,0,0.3)' }}
-        >
-          {/* 顶部信息栏：ME 标识 + 麦克风 + 时长 + 评分 */}
-          <div className="flex items-center justify-between mb-2">
-            {/* 左侧：ME 标识 */}
-            <span className="text-[10px] font-bold text-emerald-200 bg-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
-              ME
-            </span>
-            {/* 右侧：麦克风 + 时长 + 评分 */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 text-emerald-200/80">
-                <span className="text-xs">🎙️</span>
-                <span className="text-[11px] font-mono font-medium">{audioDuration || '-'}"</span>
-              </div>
-              {grade && (
-                <button
-                  onClick={() => {
-                    if (onScoreClick) { onScoreClick(score); return }
-                    setShowScoreDetail(!showScoreDetail)
-                  }}
-                  className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold ${grade.text} ${grade.bg} hover:brightness-125 transition-all cursor-pointer`}
-                  aria-label={`发音评分: ${score}分`}
-                  title="点击查看详细评测"
-                >
-                  <span>{score}</span>
-                  <span className="text-[9px] opacity-70">分</span>
-                </button>
-              )}
+          {/* 中间：绿色胶囊形语音气泡（只显示图标 + 时长 + 评分） */}
+          <div className="relative flex items-center gap-2 sm:gap-2.5 rounded-full pl-2.5 sm:pl-3 pr-2 sm:pr-2.5 py-1.5 sm:py-2 bg-gradient-to-r from-emerald-500/90 to-teal-500/90 border border-emerald-300/30"
+            style={{ boxShadow: '0 0 18px rgba(16,185,129,0.35), 0 4px 16px rgba(0,0,0,0.35)' }}
+          >
+            {/* 麦克风图标 */}
+            <div className="flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/15 shrink-0" aria-hidden="true">
+              <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3z" />
+                <path d="M19 11a1 1 0 1 0-2 0 5 5 0 1 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21a1 1 0 1 0 2 0v-3.08A7 7 0 0 0 19 11z" />
+              </svg>
             </div>
+
+            {/* 语音时长 */}
+            <span className="text-[12px] sm:text-[13px] font-mono font-semibold text-white tabular-nums">
+              {audioDuration || '-'}<span className="text-white/80">"</span>
+            </span>
+
+            {/* 评分胶囊（蓝色/紫色，圆形评分徽章） */}
+            {grade && (
+              <button
+                onClick={() => {
+                  if (onScoreClick) { onScoreClick(score); return }
+                  setShowScoreDetail(!showScoreDetail)
+                }}
+                className={`flex items-center justify-center min-w-[34px] sm:min-w-[38px] h-6 sm:h-7 px-1.5 sm:px-2 rounded-full text-[11px] sm:text-xs font-bold ${grade.text} bg-slate-900/80 border border-white/10 hover:brightness-125 hover:scale-105 active:scale-95 transition-all cursor-pointer`}
+                aria-label={`发音评分: ${score}分`}
+                title="点击查看详细评测"
+              >
+                {score}<span className="text-[9px] sm:text-[10px] opacity-70 ml-0.5">分</span>
+              </button>
+            )}
           </div>
 
-          {/* 语音文本内容 */}
-          <p className="text-[14px] sm:text-[15px] leading-relaxed text-white/90 font-medium">
+          {/* 右侧：ME 徽章（绿色，外置） */}
+          <span className="flex items-center justify-center min-w-[34px] h-7 sm:h-8 px-2 sm:px-2.5 rounded-md text-[10px] sm:text-[11px] font-bold text-white bg-gradient-to-br from-emerald-500 to-teal-600 border border-emerald-300/40 tracking-wider shadow-md"
+            style={{ boxShadow: '0 0 10px rgba(16,185,129,0.3)' }}
+          >
+            ME
+          </span>
+        </div>
+
+        {/* 语音文本（辅助展示，可选，不影响主样式） */}
+        {content && (
+          <p className="text-[12px] sm:text-[13px] text-slate-400 leading-relaxed text-right pr-1">
             {content}
           </p>
+        )}
 
-          {/* 重播按钮 */}
-          {audioUrl && (
+        {/* 语音回听按钮（与图片样例兼容，隐藏在文本下方） */}
+        {audioUrl && (
+          <div className="flex justify-end pr-1">
             <button
               onClick={handleReplay}
-              className="mt-2 text-[11px] text-emerald-200/70 hover:text-emerald-100 flex items-center gap-1 transition-colors"
-              aria-label="重播语音"
+              className="text-[10px] sm:text-[11px] text-emerald-300/70 hover:text-emerald-200 flex items-center gap-1 transition-colors"
+              aria-label="回听语音"
             >
               <span>🔊</span>
               <span>回听</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* ===== 评分详情面板 ===== */}
         {showScoreDetail && grade && (
@@ -223,27 +240,27 @@ export default function VoiceMessageBubble({
           </div>
         )}
 
-        {/* ===== 分词文本框 ===== */}
+        {/* ===== 分词文本框（紫色边框独立面板，与图片样例一致） ===== */}
         {!collapsed && wordEntries.length > 0 && (
-          <div className="rounded-xl bg-slate-800/40 border border-blue-500/10 px-2.5 sm:px-3 py-2.5"
-            style={{ boxShadow: '0 0 12px rgba(99,102,241,0.08)' }}
+          <div className="rounded-2xl bg-slate-800/30 border border-violet-500/30 px-3 sm:px-4 py-2.5 sm:py-3"
+            style={{ boxShadow: '0 0 16px rgba(139,92,246,0.12), inset 0 0 8px rgba(139,92,246,0.04)' }}
           >
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 sm:gap-2 justify-end">
               {wordEntries.map((entry, i) => (
                 <button
                   key={i}
                   onClick={(e) => handleWordClick(entry.word, e)}
-                  className={`relative px-2 py-1 rounded-lg text-[13px] sm:text-sm font-medium transition-all select-none
-                    bg-slate-700/60 border border-white/5 hover:border-blue-400/40 hover:bg-blue-500/10 hover:text-blue-200
-                    active:scale-95 hover:shadow-[0_0_8px_rgba(99,102,241,0.15)]
-                    ${activeWord === entry.word ? 'border-blue-400/60 bg-blue-500/15 text-blue-200 shadow-[0_0_10px_rgba(99,102,241,0.25)]' : 'text-slate-200'}
+                  className={`relative px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[12px] sm:text-[13px] font-medium transition-all select-none
+                    bg-slate-700/40 border border-violet-400/20 hover:border-violet-400/60 hover:bg-violet-500/15 hover:text-violet-100
+                    active:scale-95 hover:shadow-[0_0_10px_rgba(139,92,246,0.25)]
+                    ${activeWord === entry.word ? 'border-violet-400/80 bg-violet-500/20 text-violet-100 shadow-[0_0_12px_rgba(139,92,246,0.35)]' : 'text-slate-200'}
                   `}
                   aria-label={`单词: ${entry.word}`}
                   title={entry.entry ? `${entry.word} ${entry.entry.ipa} ${entry.entry.zh}` : entry.word}
                 >
                   {entry.word}
                   {playingWord === entry.word && (
-                    <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                    <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-violet-400 animate-ping" />
                   )}
                 </button>
               ))}
