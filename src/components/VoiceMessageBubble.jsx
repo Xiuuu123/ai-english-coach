@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { lookupDict, tokenizeForRender } from './WordPopup'
 
 /**
@@ -43,6 +43,10 @@ export default function VoiceMessageBubble({
   const [popupPos, setPopupPos] = useState(null)           // 弹窗定位
   const audioRef = useRef(null)
   const [playingWord, setPlayingWord] = useState(null)
+  // v12: 微信式语音播放状态
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)        // 当前播放秒数
+  const [effectiveDuration, setEffectiveDuration] = useState(audioDuration) // 实际音频时长（meta 加载后覆盖）
 
   // 单词 → 词典查询
   const wordEntries = (() => {
@@ -58,16 +62,68 @@ export default function VoiceMessageBubble({
   // 评分等级
   const grade = score != null ? getScoreGrade(score) : null
 
-  // 播放整段语音
-  const handleReplay = useCallback(() => {
+  // v12: 播放 / 暂停切换（微信式）
+  const handleTogglePlay = useCallback(() => {
     if (onReplay) { onReplay(); return }
     if (!audioUrl) return
+
+    // 首次播放 → 创建 Audio 实例并绑定事件
     if (!audioRef.current) {
-      audioRef.current = new Audio(audioUrl)
+      const audio = new Audio(audioUrl)
+      audio.preload = 'metadata'
+      // 元数据加载 → 拿到真实时长
+      audio.addEventListener('loadedmetadata', () => {
+        if (isFinite(audio.duration) && audio.duration > 0) {
+          setEffectiveDuration(Math.round(audio.duration))
+        }
+      })
+      // 播放进度更新
+      audio.addEventListener('timeupdate', () => {
+        setCurrentTime(audio.currentTime)
+      })
+      // 播放结束 → 回到初始态
+      audio.addEventListener('ended', () => {
+        setIsPlaying(false)
+        setCurrentTime(0)
+      })
+      // 暂停事件
+      audio.addEventListener('pause', () => setIsPlaying(false))
+      // 错误兜底
+      audio.addEventListener('error', () => {
+        setIsPlaying(false)
+        setCurrentTime(0)
+      })
+      audioRef.current = audio
     }
-    audioRef.current.currentTime = 0
-    audioRef.current.play().catch(() => {})
-  }, [audioUrl, onReplay])
+
+    const audio = audioRef.current
+    if (isPlaying) {
+      // 当前在播放 → 暂停
+      audio.pause()
+      setIsPlaying(false)
+    } else {
+      // 当前暂停/已结束 → 从当前位置播放
+      if (currentTime >= effectiveDuration - 0.1) {
+        audio.currentTime = 0
+        setCurrentTime(0)
+      }
+      audio.play().then(() => {
+        setIsPlaying(true)
+      }).catch(() => {
+        setIsPlaying(false)
+      })
+    }
+  }, [audioUrl, isPlaying, currentTime, effectiveDuration, onReplay])
+
+  // v12: 组件卸载时清理音频
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        try { audioRef.current.pause() } catch {}
+        audioRef.current = null
+      }
+    }
+  }, [])
 
   // 单词点击 → 弹出浮窗
   const handleWordClick = useCallback((word, e) => {
@@ -128,35 +184,64 @@ export default function VoiceMessageBubble({
             </button>
           )}
 
-          {/* 中间：绿色胶囊形语音气泡（只显示图标 + 时长 + 评分） */}
-          <div className="relative flex items-center gap-2 sm:gap-2.5 rounded-full pl-2.5 sm:pl-3 pr-2 sm:pr-2.5 py-1.5 sm:py-2 bg-gradient-to-r from-emerald-500/90 to-teal-500/90 border border-emerald-300/30"
+          {/* 中间：绿色胶囊形语音气泡（微信式 ▶ 波形 时长） */}
+          <div className="relative flex items-center gap-2 sm:gap-2.5 rounded-full pl-1 sm:pl-1.5 pr-3 sm:pr-3.5 py-1 sm:py-1.5 bg-gradient-to-r from-emerald-500/90 to-teal-500/90 border border-emerald-300/30 min-w-[160px] sm:min-w-[200px]"
             style={{ boxShadow: '0 0 18px rgba(16,185,129,0.35), 0 4px 16px rgba(0,0,0,0.35)' }}
           >
-            {/* 麦克风图标 */}
-            <div className="flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/15 shrink-0" aria-hidden="true">
-              <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3z" />
-                <path d="M19 11a1 1 0 1 0-2 0 5 5 0 1 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21a1 1 0 1 0 2 0v-3.08A7 7 0 0 0 19 11z" />
-              </svg>
+            {/* 左侧：圆形播放/暂停按钮 */}
+            <button
+              onClick={handleTogglePlay}
+              className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/20 hover:bg-white/30 active:scale-90 shrink-0 transition-all"
+              aria-label={isPlaying ? '暂停' : '播放'}
+              title={isPlaying ? '暂停' : '播放'}
+            >
+              {isPlaying ? (
+                // 暂停图标（两根竖线）
+                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="5" width="4" height="14" rx="1" />
+                  <rect x="14" y="5" width="4" height="14" rx="1" />
+                </svg>
+              ) : (
+                // 播放图标（三角形）
+                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white translate-x-[1px]" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
+            </button>
+
+            {/* 中间：横向波形（5 根条，播放时跳动） */}
+            <div className="flex items-end gap-[2px] sm:gap-[3px] h-5 sm:h-6 flex-1" aria-hidden="true">
+              {[0.6, 1, 0.45, 0.85, 0.55, 0.95, 0.5, 0.75, 0.4].map((h, i) => (
+                <span
+                  key={i}
+                  className="w-[2px] sm:w-[3px] rounded-full bg-white/85"
+                  style={{
+                    height: `${h * 100}%`,
+                    animation: isPlaying ? `voiceWave 1.1s ease-in-out ${i * 0.08}s infinite` : 'none',
+                  }}
+                />
+              ))}
             </div>
 
-            {/* 语音时长 */}
-            <span className="text-[12px] sm:text-[13px] font-mono font-semibold text-white tabular-nums">
-              {audioDuration || '-'}<span className="text-white/80">"</span>
+            {/* 右侧：动态时长（播放时显示已播/总时长） */}
+            <span className="text-[12px] sm:text-[13px] font-mono font-semibold text-white tabular-nums shrink-0">
+              {isPlaying
+                ? `${Math.max(0, effectiveDuration - Math.floor(currentTime))}"`
+                : `${effectiveDuration || audioDuration || '-'}"`}
             </span>
 
-            {/* 评分胶囊（蓝色/紫色，圆形评分徽章） */}
+            {/* 评分胶囊（圆角评分徽章，浮在气泡外右侧或内部末尾） */}
             {grade && (
               <button
                 onClick={() => {
                   if (onScoreClick) { onScoreClick(score); return }
                   setShowScoreDetail(!showScoreDetail)
                 }}
-                className={`flex items-center justify-center min-w-[34px] sm:min-w-[38px] h-6 sm:h-7 px-1.5 sm:px-2 rounded-full text-[11px] sm:text-xs font-bold ${grade.text} bg-slate-900/80 border border-white/10 hover:brightness-125 hover:scale-105 active:scale-95 transition-all cursor-pointer`}
+                className={`flex items-center justify-center min-w-[30px] sm:min-w-[34px] h-5 sm:h-6 px-1 sm:px-1.5 rounded-full text-[10px] sm:text-[11px] font-bold ${grade.text} bg-slate-900/80 border border-white/10 hover:brightness-125 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0`}
                 aria-label={`发音评分: ${score}分`}
                 title="点击查看详细评测"
               >
-                {score}<span className="text-[9px] sm:text-[10px] opacity-70 ml-0.5">分</span>
+                {score}<span className="text-[8px] sm:text-[9px] opacity-70 ml-0.5">分</span>
               </button>
             )}
           </div>
@@ -169,25 +254,12 @@ export default function VoiceMessageBubble({
           </span>
         </div>
 
-        {/* 语音文本（辅助展示，可选，不影响主样式） */}
+        {/* 语音文本（v12: 改用 ASR 转写英文展示，提供分词高亮） */}
         {content && (
-          <p className="text-[12px] sm:text-[13px] text-slate-400 leading-relaxed text-right pr-1">
+          <p className="text-[12px] sm:text-[13px] text-slate-300 leading-relaxed text-right pr-1">
+            <span className="text-emerald-300/70 text-[10px] mr-1">📝</span>
             {content}
           </p>
-        )}
-
-        {/* 语音回听按钮（与图片样例兼容，隐藏在文本下方） */}
-        {audioUrl && (
-          <div className="flex justify-end pr-1">
-            <button
-              onClick={handleReplay}
-              className="text-[10px] sm:text-[11px] text-emerald-300/70 hover:text-emerald-200 flex items-center gap-1 transition-colors"
-              aria-label="回听语音"
-            >
-              <span>🔊</span>
-              <span>回听</span>
-            </button>
-          </div>
         )}
 
         {/* ===== 评分详情面板 ===== */}
@@ -360,3 +432,18 @@ export default function VoiceMessageBubble({
     </div>
   )
 }
+
+// v12: 微信式语音波形动画 keyframes
+const voiceWaveStyle = typeof document !== 'undefined' ? (() => {
+  if (document.getElementById('voice-bubble-keyframes')) return null
+  const style = document.createElement('style')
+  style.id = 'voice-bubble-keyframes'
+  style.textContent = `
+    @keyframes voiceWave {
+      0%, 100% { transform: scaleY(0.4); }
+      50% { transform: scaleY(1); }
+    }
+  `
+  document.head.appendChild(style)
+  return null
+})() : null
