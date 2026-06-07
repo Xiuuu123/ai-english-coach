@@ -15,6 +15,7 @@ import VoiceWaveform from '../components/VoiceWaveform'
 import MembershipModal from '../components/MembershipModal'
 import LevelSelect from '../components/LevelSelect'
 import BadgeModal from '../components/BadgeModal'
+import WordPopup, { tokenizeForRender } from '../components/WordPopup'
 import {
   playRecordStartSound,
   playRecordEndSound,
@@ -55,6 +56,8 @@ export default function ChatPage() {
   // v7: 关卡选择弹窗 & 通关弹窗 & 勋章弹窗
   const [showLevelSelect, setShowLevelSelect] = useState(false)
   const [showLevelComplete, setShowLevelComplete] = useState(false)
+  // v8: 单词查询弹窗 — { word, anchorRect }
+  const [wordPopup, setWordPopup] = useState(null)
   const [showBadgeModal, setShowBadgeModal] = useState(false)
   // 关卡内得分追踪（用于判断通关）
   const levelScoresRef = useRef([])
@@ -493,7 +496,11 @@ export default function ChatPage() {
           const isLastUser = msg.role === 'user' && idx === [...messages].reverse().findIndex(m => m.role === 'user') === 0
           return (
             <div key={idx}>
-              <MessageBubble message={msg} onReplay={(t) => speak(t)} />
+              <MessageBubble
+                message={msg}
+                onReplay={(t) => speak(t)}
+                onWordClick={msg.role === 'assistant' ? (word, rect) => setWordPopup({ word, anchorRect: rect }) : undefined}
+              />
               {isLastUser && msg.content && (
                 <PronunciationCard spokenText={msg.content} />
               )}
@@ -788,6 +795,16 @@ export default function ChatPage() {
       {showBadgeModal && scene && (
         <BadgeModal scene={scene} onClose={() => setShowBadgeModal(false)} />
       )}
+
+      {/* v8: 单词查询弹窗 — 点击 AI 消息中的任意单词触发 */}
+      {wordPopup && (
+        <WordPopup
+          word={wordPopup.word}
+          anchorRect={wordPopup.anchorRect}
+          onClose={() => setWordPopup(null)}
+          onSpeak={(w) => speak(w)}
+        />
+      )}
     </div>
   )
 }
@@ -835,7 +852,7 @@ const WelcomeCard = memo(function WelcomeCard({ scene, onStart }) {
 })
 
 /** 消息气泡 — v2 增加多维度评分展示（React.memo 优化） */
-const MessageBubble = memo(function MessageBubble({ message, onReplay }) {
+const MessageBubble = memo(function MessageBubble({ message, onReplay, onWordClick, isStreaming }) {
   const isUser = message.role === 'user'
   const userAudioRef = useRef(null)  // v8: 用户语音重播 ref
   const [userAudioPlaying, setUserAudioPlaying] = useState(false)
@@ -859,6 +876,31 @@ const MessageBubble = memo(function MessageBubble({ message, onReplay }) {
     }
   }
 
+  // v8: 渲染带可点击单词的 AI 文本
+  const renderClickableText = (text) => {
+    if (!onWordClick || !text) return text
+    const tokens = tokenizeForRender(text)
+    return tokens.map((tok, i) => {
+      if (tok.type === 'word') {
+        return (
+          <span
+            key={i}
+            data-word-span
+            className="cursor-pointer hover:text-indigo-300 hover:bg-indigo-500/15 rounded px-0.5 transition-colors active:bg-indigo-500/25"
+            onClick={(e) => {
+              e.stopPropagation()
+              const rect = e.currentTarget.getBoundingClientRect()
+              onWordClick(tok.value, rect)
+            }}
+          >
+            {tok.value}
+          </span>
+        )
+      }
+      return <span key={i}>{tok.value}</span>
+    })
+  }
+
   return (
     <div className={`flex items-start gap-2.5 sm:gap-3 message-enter ${isUser ? 'flex-row-reverse' : ''}`} role="article" aria-label={`${isUser ? '用户' : 'AI'}消息`}>
       <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-white text-[10px] sm:text-xs shrink-0 shadow-lg
@@ -869,7 +911,9 @@ const MessageBubble = memo(function MessageBubble({ message, onReplay }) {
       <div className={`max-w-[82%] sm:max-w-[75%] space-y-1.5`}>
         <div className={`rounded-2xl px-3.5 sm:px-4 py-2.5 sm:py-3 text-[14px] sm:text-[15px] leading-relaxed shadow-lg
           ${isUser ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-gray-100 rounded-tl-sm border border-white/5'}`}>
-          {message.reply || message.content}
+          {isUser || !onWordClick
+            ? (message.reply || message.content)
+            : renderClickableText(message.reply || message.content)}
         </div>
 
         {isUser && message.content && (
