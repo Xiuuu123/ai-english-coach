@@ -256,11 +256,11 @@ export default function ChatPage() {
     // 取消之前的流式请求
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
 
-    // v14: 优先用调用方传入的 inputMode / audioUrl（语音渠道已显式传入），
-    //      回退到 closure 状态（文字渠道）
-    const effectiveMode = options.inputMode || (lastAudioUrlRef.current ? 'voice' : 'text')
-    const effectiveAudioUrl = options.audioUrl !== undefined ? options.audioUrl : lastAudioUrlRef.current
-    const effectiveAudioDuration = options.audioDuration !== undefined ? options.audioDuration : lastAudioDurationRef.current
+    // v15: 默认文字模式 — 语音渠道已显式传入 options，文字渠道不传 options
+    // 解决：文字输入时 lastAudioUrlRef 可能残留旧录音 URL，导致误判为语音模式
+    const effectiveMode = options.inputMode || 'text'
+    const effectiveAudioUrl = options.audioUrl !== undefined ? options.audioUrl : null
+    const effectiveAudioDuration = options.audioDuration !== undefined ? options.audioDuration : 0
     setInputMode(effectiveMode, 'send')
 
     // v8: 把当前录制的语音 URL 和时长绑定到 userMsg（如果有）— 用于重播和气泡展示
