@@ -66,7 +66,7 @@ export default function ChatPage() {
   const abortRef = useRef(null)
 
   // Hooks
-  const { isListening, transcript, interimText, isSupported, startListening, stopListening, setTranscript } = useSpeechRecognition()
+  const { isListening, transcript, interimText, isSupported, networkError, startListening, stopListening, setTranscript } = useSpeechRecognition()
   const { speak, stop: stopTTS } = useTTS()
   const { microphones, speakers, selectedMicId, selectedSpeakerId, setSelectedMicId, setSelectedSpeakerId, isDeviceReady, error: deviceError, permission, refreshDevices } = useAudioDevices()
   const { state: progressState, recordSession } = useProgressTracker()
@@ -555,6 +555,17 @@ export default function ChatPage() {
 
         {!isSupported ? (
           <p className="text-center text-red-400/70 text-sm py-3">不支持语音识别，请使用 Chrome 或下方输入</p>
+        ) : networkError ? (
+          // v8: 网络/服务不可达错误提示
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-center text-amber-400/80 text-xs leading-relaxed max-w-md">{networkError}</p>
+            <button
+              onClick={startListening}
+              className="text-xs text-indigo-400 hover:text-indigo-300 underline transition-colors"
+            >
+              重试
+            </button>
+          </div>
         ) : (
           <div className="flex flex-col items-center gap-1">
             <div className="flex justify-center">

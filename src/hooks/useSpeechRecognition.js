@@ -20,12 +20,16 @@ export function useSpeechRecognition() {
   const [transcript, setTranscript] = useState('')
   const [interimText, setInterimText] = useState('')
   const [isSupported, setIsSupported] = useState(true)
+  const [networkError, setNetworkError] = useState(null) // v8: 网络/服务不可达错误
   const recognitionRef = useRef(null)
   const isHoldingRef = useRef(false)
   const accumulatedRef = useRef('')
   const sessionIdRef = useRef(0)
   // 连续失败计数（用于退避重试）
   const failCountRef = useRef(0)
+  // v8: 网络错误重试计数（有上限，避免无限重试）
+  const networkRetryRef = useRef(0)
+  const MAX_NETWORK_RETRIES = 3
 
   // 预创建识别实例（页面加载时即创建，消除首次创建延迟 ~50ms）
   useEffect(() => {
@@ -120,6 +124,28 @@ export function useSpeechRecognition() {
         return
       }
 
+      // v8: 网络错误 — 语音识别服务不可达（常见于国内网络无法访问 Google 服务）
+      if (event.error === 'network' || event.error === 'service-not-allowed') {
+        networkRetryRef.current += 1
+        if (networkRetryRef.current >= MAX_NETWORK_RETRIES) {
+          setIsListening(false)
+          isHoldingRef.current = false
+          setNetworkError(
+            event.error === 'network'
+              ? '语音识别服务连接失败，请检查网络是否能访问 Google 服务，或尝试使用 Edge 浏览器'
+              : '当前浏览器不支持语音识别服务，请尝试使用 Chrome 或 Edge 浏览器'
+          )
+          return
+        }
+        // 首次出现网络错误，等待后重试一次（可能是临时网络波动）
+        setTimeout(() => {
+          if (sessionIdRef.current === currentSessionId && isHoldingRef.current) {
+            createAndStart(currentSessionId)
+          }
+        }, 1500)
+        return
+      }
+
       // 记录失败
       failCountRef.current += 1
 
@@ -190,6 +216,8 @@ export function useSpeechRecognition() {
     setTranscript('')
     setInterimText('')
     setIsListening(true)
+    setNetworkError(null)      // v8: 重置网络错误状态
+    networkRetryRef.current = 0 // v8: 重置网络重试计数
 
     createAndStart(newSessionId)
   }, [isSupported])
@@ -218,5 +246,5 @@ export function useSpeechRecognition() {
     }
   }, [])
 
-  return { isListening, transcript, interimText, isSupported, startListening, stopListening, setTranscript }
+  return { isListening, transcript, interimText, isSupported, networkError, startListening, stopListening, setTranscript }
 }
