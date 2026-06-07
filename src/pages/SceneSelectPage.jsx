@@ -1,6 +1,7 @@
 import { useState, useMemo, useDeferredValue, useTransition } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { scenes } from '../data/scenes'
+import { useLevelProgress } from '../hooks/useLevelProgress'
 
 /* ====== 分类元数据 ====== */
 const CATEGORIES = [
@@ -24,6 +25,7 @@ export default function SceneSelectPage() {
   const [activeCategory, setActiveCategory] = useState('all')
   const deferredSearch = useDeferredValue(search)
   const [, startTransition] = useTransition()
+  const { getSceneProgress, getCompletedCount, hasBadge } = useLevelProgress()
 
   const filteredScenes = useMemo(() => {
     const keyword = deferredSearch.trim().toLowerCase()
@@ -38,7 +40,10 @@ export default function SceneSelectPage() {
   }, [deferredSearch, activeCategory])
 
   function handleSelect(sceneId) {
-    navigate(`/chat/${sceneId}`)
+    // 跳转到第一个未通关的关卡
+    const sp = getSceneProgress(sceneId)
+    const nextLevel = sp.highestUnlocked ?? 0
+    navigate(`/chat/${sceneId}/${nextLevel}`)
   }
 
   const isActive = (path) => location.pathname === path
@@ -138,6 +143,10 @@ export default function SceneSelectPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredScenes.map(scene => {
                 const diff = DIFFICULTY_META[scene.difficulty] || DIFFICULTY_META.beginner
+                const totalLevels = scene.levels?.length || 1
+                const completedCount = getCompletedCount(scene.id)
+                const allDone = completedCount >= totalLevels && totalLevels > 0
+                const sceneBadge = hasBadge(scene.id)
                 return (
                   <button
                     key={scene.id}
@@ -148,15 +157,42 @@ export default function SceneSelectPage() {
                   >
                     <div className="flex items-start justify-between mb-3">
                       <span className="text-3xl">{scene.icon}</span>
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                        style={{ background: diff.bg, color: diff.color }}>{diff.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        {/* v7: 勋章徽章 */}
+                        {sceneBadge && (
+                          <span className="text-sm" title={scene.badgeName}>{scene.badge}</span>
+                        )}
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                          style={{ background: diff.bg, color: diff.color }}>{diff.label}</span>
+                      </div>
                     </div>
                     <h4 className="text-base font-bold text-white mb-1">{scene.name}</h4>
                     <p className="text-xs text-slate-500 mb-1">{scene.nameEn}</p>
                     <p className="text-xs text-slate-400 leading-relaxed mb-4 line-clamp-2">{scene.description}</p>
+
+                    {/* v7: 关卡进度条 */}
+                    {totalLevels > 1 && (
+                      <div className="mb-3">
+                        <div className="flex justify-between items-end mb-1">
+                          <span className="text-[10px] text-slate-500">闯关进度</span>
+                          <span className="text-[10px] font-bold text-indigo-400">{completedCount}/{totalLevels}</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${allDone ? 'bg-gradient-to-r from-amber-400 to-orange-400' : 'bg-gradient-to-r from-indigo-500 to-purple-500'}`}
+                            style={{ width: `${(completedCount / totalLevels) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     <div className="mt-auto">
-                      <span className="inline-block w-full text-center text-xs font-semibold py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white group-hover:from-indigo-500 group-hover:to-purple-500 transition-all">
-                        开始练习
+                      <span className={`inline-block w-full text-center text-xs font-semibold py-2 rounded-lg transition-all
+                        ${allDone
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
+                          : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white group-hover:from-indigo-500 group-hover:to-purple-500'
+                        }`}>
+                        {allDone ? '🎉 已通关 · 再练一次' : '开始练习'}
                       </span>
                     </div>
                   </button>

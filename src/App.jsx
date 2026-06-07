@@ -21,6 +21,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<SceneSelectPage />} />
         <Route path="/chat/:sceneId" element={<ChatPage />} />
+        <Route path="/chat/:sceneId/:levelIndex" element={<ChatPage />} />
         <Route path="/summary" element={<SummaryPage />} />
         <Route path="/vip" element={<VipPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,17 +1,20 @@
 import { useState, useRef, useEffect, useCallback, memo, useMemo, useDeferredValue } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getSceneById } from '../data/scenes'
+import { getSceneById, getLevelByIndex } from '../data/scenes'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 import { useTTS } from '../hooks/useTTS'
 import { useAudioDevices } from '../hooks/useAudioDevices'
 import { useConversationPersistence } from '../hooks/useConversationPersistence'
 import { useProgressTracker } from '../hooks/useProgressTracker'
 import { useMembership, FREE_CHAT_LIMIT } from '../hooks/useMembership'
+import { useLevelProgress } from '../hooks/useLevelProgress'
 import { sendMessage, MAX_RETRIES, prewarmConnection } from '../services/chatService'
 import DeviceSelector from '../components/DeviceSelector'
 import PronunciationCard from '../components/PronunciationCard'
 import VoiceWaveform from '../components/VoiceWaveform'
 import MembershipModal from '../components/MembershipModal'
+import LevelSelect from '../components/LevelSelect'
+import BadgeModal from '../components/BadgeModal'
 import {
   playRecordStartSound,
   playRecordEndSound,
@@ -23,12 +26,18 @@ import {
 const RETRY_DELAY = 2000
 
 export default function ChatPage() {
-  const { sceneId } = useParams()
+  const { sceneId, levelIndex: levelIndexStr } = useParams()
   const navigate = useNavigate()
   const scene = getSceneById(sceneId)
+  const levelIndex = levelIndexStr ? parseInt(levelIndexStr, 10) : 0
+  const level = getLevelByIndex(scene, levelIndex)
+  const totalLevels = scene?.levels?.length || 1
+
+  // 关卡进度
+  const { isLevelCompleted, isSceneAllCompleted, completeLevel, awardBadge, hasBadge } = useLevelProgress()
 
   // 状态管理
-  const { messages, setMessages, isRestored, clearConversation } = useConversationPersistence(sceneId)
+  const { messages, setMessages, isRestored, clearConversation } = useConversationPersistence(`${sceneId}-l${levelIndex}`)
   const [isLoading, setIsLoading] = useState(false)
   const [showCorrections, setShowCorrections] = useState(false)
   // v2: 流式文本 — 直接使用 SSE 返回的增量内容，无需模拟打字机
@@ -43,6 +52,13 @@ export default function ChatPage() {
   // v5: 会员开通弹窗
   const [showVipModal, setShowVipModal] = useState(false)
   const [vipModalReason, setVipModalReason] = useState('limit')
+  // v7: 关卡选择弹窗 & 通关弹窗 & 勋章弹窗
+  const [showLevelSelect, setShowLevelSelect] = useState(false)
+  const [showLevelComplete, setShowLevelComplete] = useState(false)
+  const [showBadgeModal, setShowBadgeModal] = useState(false)
+  // 关卡内得分追踪（用于判断通关）
+  const levelScoresRef = useRef([])
+  const levelCompletedRef = useRef(false)
   const messagesEndRef = useRef(null)
   const lastSentRef = useRef('')
   const sendingRef = useRef(false)
@@ -84,6 +100,41 @@ export default function ChatPage() {
     }, 1000)
     return () => clearTimeout(timer)
   }, [sceneId]) // 只在场景切换时执行
+
+  // ====== v7: 关卡切换时重置状态 ======
+  useEffect(() => {
+    levelScoresRef.current = []
+    levelCompletedRef.current = false
+    setShowLevelComplete(false)
+    setShowBadgeModal(false)
+  }, [sceneId, levelIndex])
+
+  // ====== v7: 检查关卡是否通关 ======
+  function checkLevelComplete(score) {
+    if (levelCompletedRef.current) return
+    if (!level) return
+    const { minScore, minRounds } = level.passCondition
+    levelScoresRef.current.push(score)
+
+    // 取最近 minRounds 轮的平均分
+    if (levelScoresRef.current.length >= minRounds) {
+      const recent = levelScoresRef.current.slice(-minRounds)
+      const avg = recent.reduce((a, b) => a + b, 0) / recent.length
+      if (avg >= minScore) {
+        levelCompletedRef.current = true
+        completeLevel(sceneId, levelIndex, Math.round(avg))
+        setShowLevelComplete(true)
+
+        // 检查是否全场景通关
+        if (isSceneAllCompleted(sceneId, totalLevels) && !hasBadge(sceneId)) {
+          setTimeout(() => {
+            awardBadge(sceneId)
+            setShowBadgeModal(true)
+          }, 1500)
+        }
+      }
+    }
+  }
 
   // ====== v3: 快捷短语 — 场景相关高频表达 ======
   const quickPhrases = useMemo(() => {
@@ -182,7 +233,7 @@ export default function ChatPage() {
         // 流式调用：onStreamChunk 回调实时更新 UI
         const result = await sendMessage(sceneId, history, (chunkText) => {
           setStreamText(chunkText)
-        })
+        }, level?.systemPrompt)
 
         // 流式结束，显示最终结果
         setIsStreaming(false)
@@ -195,6 +246,11 @@ export default function ChatPage() {
         speak(result.reply, { outputDeviceId: selectedSpeakerId })
         if (result.corrections?.length > 0) setShowCorrections(true)
         playReceiveSound()
+
+        // v7: 关卡通关检查
+        if (result.score != null) {
+          checkLevelComplete(result.score)
+        }
 
         sendingRef.current = false
         setIsLoading(false)
@@ -316,6 +372,12 @@ export default function ChatPage() {
         <div className="flex items-center gap-1.5 sm:gap-2">
           <span className="text-base sm:text-lg">{scene.icon}</span>
           <span className="font-semibold text-white text-sm sm:text-base hidden sm:inline">{scene.name}</span>
+          {/* v7: 关卡信息 */}
+          {level && (
+            <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded-full font-medium hidden sm:inline">
+              {level.icon} {level.name}
+            </span>
+          )}
           {/* 连续天数徽章 */}
           {progressState.streakDays >= 2 && (
             <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-medium">
@@ -348,6 +410,14 @@ export default function ChatPage() {
           )}
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* v7: 关卡选择按钮 */}
+          <button
+            onClick={() => setShowLevelSelect(true)}
+            className="text-[10px] sm:text-xs font-medium px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/5 transition-all active:scale-95"
+            title="关卡选择"
+          >
+            🎯 关卡
+          </button>
           {/* v5: 开通 VIP 入口 */}
           {!vip && (
             <button
@@ -601,6 +671,66 @@ export default function ChatPage() {
         onActivate={activateVip}
         onClose={() => setShowVipModal(false)}
       />
+
+      {/* v7: 关卡选择弹窗 */}
+      {showLevelSelect && scene && (
+        <LevelSelect scene={scene} onClose={() => setShowLevelSelect(false)} />
+      )}
+
+      {/* v7: 关卡通关弹窗 */}
+      {showLevelComplete && level && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowLevelComplete(false)}
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div
+            className="relative bg-slate-900 border border-emerald-500/20 rounded-2xl w-full max-w-sm shadow-2xl animate-scale-up overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 通关顶部 */}
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-6 text-center">
+              <div className="text-5xl mb-2 animate-bounce-in">🎉</div>
+              <h3 className="text-lg font-bold text-white">关卡通关！</h3>
+              <p className="text-emerald-200 text-sm mt-1">{level.icon} {level.name}</p>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-slate-300 text-sm text-center">
+                恭喜完成本关挑战，AI 评分已达标！
+              </p>
+              {/* 下一关按钮 */}
+              {levelIndex + 1 < totalLevels ? (
+                <button
+                  onClick={() => {
+                    setShowLevelComplete(false)
+                    navigate(`/chat/${sceneId}/${levelIndex + 1}`)
+                  }}
+                  className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-xl hover:from-emerald-400 hover:to-teal-400 transition-all active:scale-[0.98]"
+                >
+                  进入下一关 →
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowLevelComplete(false)}
+                  className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-xl hover:from-amber-400 hover:to-orange-400 transition-all active:scale-[0.98]"
+                >
+                  查看勋章 →
+                </button>
+              )}
+              <button
+                onClick={() => setShowLevelComplete(false)}
+                className="w-full py-2.5 bg-slate-800 text-slate-400 font-medium rounded-xl hover:bg-slate-700 hover:text-white transition-all"
+              >
+                继续练习
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v7: 勋章弹窗 */}
+      {showBadgeModal && scene && (
+        <BadgeModal scene={scene} onClose={() => setShowBadgeModal(false)} />
+      )}
     </div>
   )
 }

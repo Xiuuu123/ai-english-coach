@@ -63,7 +63,7 @@ function cacheKey(sceneId, history) {
  * - 优化 prompt 长度减少 prefill 时间
  * - 缓存命中直接返回，节省 ~1-2s
  */
-export async function sendMessage(sceneId, history, onStreamChunk) {
+export async function sendMessage(sceneId, history, onStreamChunk, systemPromptOverride) {
   const scene = scenes.find(s => s.id === sceneId)
   if (!scene) throw new Error(`Unknown scene: ${sceneId}`)
 
@@ -73,10 +73,11 @@ export async function sendMessage(sceneId, history, onStreamChunk) {
     content: m.role === 'assistant' ? (m.reply || m.content || '') : (m.content || ''),
   }))
 
-  // 精简系统提示：截取前 800 字符核心指令，减少 prefill 时间
-  const systemPrompt = scene.systemPrompt.length > 800
-    ? scene.systemPrompt.slice(0, 800) + '...Keep responses concise.'
-    : scene.systemPrompt
+  // 使用关卡级 systemPrompt（如果有），否则使用场景级
+  const rawPrompt = systemPromptOverride || scene.systemPrompt
+  const systemPrompt = rawPrompt.length > 800
+    ? rawPrompt.slice(0, 800) + '...Keep responses concise.'
+    : rawPrompt
 
   const messages = [
     { role: 'system', content: systemPrompt },
