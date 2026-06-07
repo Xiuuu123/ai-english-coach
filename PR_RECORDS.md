@@ -4,7 +4,6 @@
 > **部署地址**: https://xiuuu123.github.io/ai-english-coach/
 > **CI/CD**: GitHub Actions 自动部署到 GitHub Pages
 > **最后更新**: 2026-06-07
-
 ---
 
 ## 📋 提交规范
@@ -29,6 +28,19 @@
 | 4 | `fa80eb4` | refactor | 拆分 build 和 deploy 为独立 job | ✅ |
 | 5 | `e4823b4` | feat | 添加会员功能（VIP 弹窗/次数限制/独立场景计数） | ✅ |
 | 6 | `22cab5d` | fix | 优化音频设备检测，解决耳机检测慢/无声音问题 | ✅ |
+| 7 | `26a58dd` | fix(ui) | 录音按钮位置固定，波形改为浮动在按钮上方 | ✅ |
+| 8 | `57f12e5` | feat | 剧情闯关玩法 — 场景关卡化、进度条、徽章系统 | ✅ |
+| 9 | `c5f9865` | fix | 语音识别服务不可达时显示明确错误提示 | ✅ |
+| 10 | `8656154` | fix | 手机/平板不支持语音识别时，文字输入作为主方案 | ✅ |
+| 11 | `6e2e8ce` | feat | 发音+语义联动纠错 + 长期能力成长档案与趋势分析 | ✅ |
+| 12 | `1363d2b` | feat | 句子无错误时不显示实时纠错面板 + 语音输入新增回听按钮 | ✅ |
+| 13 | `e3ecbc8` | feat | AI 消息分词高亮 + 点击单词弹出释义卡片(音标/词性/中文/TTS发音) | ✅ |
+| 14 | `b5531dd` | feat | 双语对话控制条 v8 (语速/口音/风格切换 + 持久化) | ✅ |
+| 15 | `1c3ddc7` | feat | 实时纠错面板 v8 (桌面右侧固定 + 手机底部抽屉) | ✅ |
+| 16 | `10cf3ff` | feat | 微信式上滑取消录音 (v8) | ✅ |
+| 17 | `5664d75` | feat | 语音消息气泡 v9 (绿色气泡+分词面板+词典浮窗+评分报告+折叠) | ✅ |
+| 18 | `49a3fcb` | feat | 录音交互 v10 (桌面端鼠标+取消按钮 / 移动端上滑取消 / 实时时长) | ✅ |
+| 19 | `9ff85eb` | docs | 新增专业 README.md (项目介绍/技术栈/架构图/快速开始) | ✅ |
 
 ---
 
@@ -325,14 +337,27 @@ GitHub 仓库只提交了 `.env.example`，没有 `.env`。本地开发时手动
 
 | 指标 | 数值 |
 |------|------|
-| 总 commit 数 | 6 |
-| 功能 PR 数 | 2 (feat) |
-| 修复 PR 数 | 3 (fix) |
+| 总 commit 数 | 19 |
+| 功能 PR 数 | 11 (feat) |
+| 修复 PR 数 | 6 (fix) |
 | 重构 PR 数 | 1 (refactor) |
-| 累计代码量 | ~3000 行 |
+| 文档 PR 数 | 1 (docs) |
+| 累计代码量 | ~5500 行 |
 | 主要技术栈 | React 18 + Vite 5 + TailwindCSS 3 + Web Speech API + Web Audio API + DeepSeek API |
 | 部署平台 | GitHub Pages (CI/CD: GitHub Actions) |
 | 上线地址 | https://xiuuu123.github.io/ai-english-coach/ |
+
+### 各模块代码量分布
+
+| 模块 | 文件数 | 大约行数 |
+|------|-------|---------|
+| 组件 (components) | 12 | ~1800 |
+| Hooks | 7 | ~1100 |
+| 页面 (pages) | 4 | ~1500 |
+| 工具 (utils) | 3 | ~400 |
+| 服务 (services) | 1 | ~150 |
+| 数据 (data) | 1 | ~300 |
+| 样式 (CSS) | 1 | ~250 |
 
 ---
 
@@ -340,24 +365,41 @@ GitHub 仓库只提交了 `.env.example`，没有 `.env`。本地开发时手动
 
 | # | 计划 PR | 描述 |
 |---|---------|------|
-| 7 | `feat(chat): 添加多人语音会话支持` | 支持多用户同时对话 |
-| 8 | `feat(ai): 集成 GPT-4 模型` | 替换默认模型提升对话质量 |
-| 9 | `feat(payment): 接入真实支付` | 微信/支付宝扫码支付 |
-| 10 | `feat(mobile): PWA 离线支持` | Service Worker 离线缓存 |
-| 11 | `feat(intl): 国际化多语言` | i18n 支持中英日韩 |
-| 12 | `feat(test): 添加单元测试` | Jest + React Testing Library |
+| 20 | `feat(chat): 多人语音会话支持` | 多用户同时对话 |
+| 21 | `feat(ai): 集成 GPT-4 / Claude` | 替换默认模型提升对话质量 |
+| 22 | `feat(payment): 接入真实支付` | 微信/支付宝扫码支付 |
+| 23 | `feat(mobile): PWA 离线支持` | Service Worker 离线缓存 |
+| 24 | `feat(intl): 国际化多语言` | i18n 支持中英日韩 |
+| 25 | `feat(test): 添加单元测试` | Vitest + React Testing Library |
+| 26 | `feat(visual): 数字人头像` | AI 回复时显示口型同步头像 |
+| 27 | `feat(analytics): 学习报告 PDF 导出` | 总结页支持 PDF 下载 |
 
 ---
 
 ## 📝 Commit 记录
 
 ```
-22cab5d  fix: 优化音频设备检测，解决耳机检测慢/无声音问题
-e4823b4  feat: 添加会员功能（VIP 弹窗、次数限制、独立场景计数）
-fa80eb4  refactor: split build and deploy into separate jobs for clearer error reporting
-e43aed2  fix: enable GitHub Pages automatically via configure-pages action
-de11187  fix: copy .env.example to .env during GitHub Pages build
-b8ef6ef  feat: AI English speaking coach - complete application with voice interaction, pronunciation evaluation, and streaming chat
+9ff85eb  docs: 新增专业 README.md
+49a3fcb  feat: 录音交互 v10 (桌面端鼠标+取消按钮 / 移动端上滑取消)
+5664d75  feat: 语音消息气泡 v9 (绿色气泡+分词面板+词典浮窗+评分报告+折叠)
+10cf3ff  feat: 微信式上滑取消录音 (v8)
+1c3ddc7  feat: 实时纠错面板 v8 (桌面右侧固定 + 手机底部抽屉)
+8c10165  feat: 英文句子单词高亮 (grammar级/pronunciation级/expression级)
+f0ab77a  chore: 移除误提交的 vite 临时文件
+b5531dd  feat: 双语对话控制条 v8 (语速/口音/风格切换 + 持久化)
+e3ecbc8  feat: AI 消息分词高亮 + 点击单词弹出释义卡片
+1363d2b  feat: 句子无错误时不显示实时纠错面板 + 语音输入新增回听按钮
+6e2e8ce  feat: 发音+语义联动纠错 + 长期能力成长档案与趋势分析
+8656154  fix: 手机/平板不支持语音识别时，文字输入作为主要输入方式
+c5f9865  fix: 语音识别服务不可达时显示明确错误提示
+57f12e5  feat: 剧情闯关玩法 -- 场景关卡化、进度条、徽章系统
+26a58dd  fix(ui): 录音按钮位置固定，波形改为浮动在按钮上方
+22cab5d  fix: 优化音频设备检测
+e4823b4  feat: 添加会员功能（VIP 弹窗/次数限制/独立场景计数）
+fa80eb4  refactor: 拆分 build 和 deploy 为独立 job
+e43aed2  fix: 通过 configure-pages action 自动启用 GitHub Pages
+de11187  fix: GitHub Pages 构建时复制 .env.example
+b8ef6ef  feat: 完整应用初始提交
 ```
 
 ---
