@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 
 /**
  * 实时纠错面板 v1
@@ -105,21 +105,29 @@ export default function RealTimeCorrectionPanel({
   onClose,
   variant = 'sidebar',
   className = '',
+  inputMode = 'voice', // v13: 模式感知 — 文字模式隐藏发音/语调相关
 }) {
   // 每个 type 一个折叠状态；默认全部展开
   const [collapsed, setCollapsed] = useState({})
 
+  // v13: 文字模式剔除发音、语调、连读相关纠错
+  const filteredCorrections = useMemo(() => {
+    if (inputMode !== 'text') return corrections
+    const banned = new Set(['pronunciation', 'intonation', 'liaison', 'phoneme', 'stress', 'fluency', 'rhythm'])
+    return corrections.filter(c => !banned.has((c.type || '').toLowerCase()))
+  }, [corrections, inputMode])
+
   // 按 type 分组
-  const grouped = corrections.reduce((acc, c) => {
+  const grouped = filteredCorrections.reduce((acc, c) => {
     const t = c.type || 'other'
     if (!acc[t]) acc[t] = []
     acc[t].push(c)
     return acc
   }, {})
 
-  // 出现过的 type 顺序（按 corrections 顺序）
+  // 出现过的 type 顺序（按 filteredCorrections 顺序）
   const orderedTypes = []
-  corrections.forEach(c => {
+  filteredCorrections.forEach(c => {
     const t = c.type || 'other'
     if (!orderedTypes.includes(t)) orderedTypes.push(t)
   })
@@ -140,25 +148,40 @@ export default function RealTimeCorrectionPanel({
       aria-label="实时纠错面板"
     >
       {/* 头部 */}
-      <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/5 shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-base">✨</span>
-          <h2 className="text-sm font-semibold text-white truncate">实时纠错</h2>
-          {corrections.length > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200 font-medium">
-              {corrections.length} 处
-            </span>
+      <header className="flex flex-col gap-1.5 px-4 py-3 border-b border-white/5 shrink-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base">✨</span>
+            <h2 className="text-sm font-semibold text-white truncate">实时纠错</h2>
+            {filteredCorrections.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200 font-medium">
+                {filteredCorrections.length} 处
+              </span>
+            )}
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+              aria-label="关闭纠错面板"
+            >
+              ✕
+            </button>
           )}
         </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
-            aria-label="关闭纠错面板"
-          >
-            ✕
-          </button>
-        )}
+        {/* v13: 模式标识 + 纠错范围说明 */}
+        <div className="flex items-center gap-1.5">
+          <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+            inputMode === 'text'
+              ? 'bg-indigo-500/10 border-indigo-400/30 text-indigo-300'
+              : 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300'
+          }`}>
+            {inputMode === 'text' ? '✏️' : '🎤'} {inputMode === 'text' ? '文字模式' : '语音模式'}
+          </span>
+          <span className="text-[9px] text-slate-500 leading-tight">
+            {inputMode === 'text' ? '隐藏发音 · 仅展示语法/词汇' : '含发音技巧 · 连读讲解'}
+          </span>
+        </div>
       </header>
 
       {/* 内容滚动区 */}

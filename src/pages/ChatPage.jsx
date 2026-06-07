@@ -9,7 +9,9 @@ import { useProgressTracker } from '../hooks/useProgressTracker'
 import { useMembership, FREE_CHAT_LIMIT } from '../hooks/useMembership'
 import { useLevelProgress } from '../hooks/useLevelProgress'
 import { useDailyGoal } from '../hooks/useDailyGoal'
+import { useInputMode, MODE_META } from '../hooks/useInputMode'
 import { sendMessage, MAX_RETRIES, prewarmConnection } from '../services/chatService'
+import { adaptDimensions, calculateOverallScore, filterCorrectionsByMode, filterPronunciationTipsByMode, getDimensionMeta, getModeRuleText } from '../utils/scoreAdapter'
 import DeviceSelector from '../components/DeviceSelector'
 import PronunciationCard from '../components/PronunciationCard'
 import VoiceWaveform from '../components/VoiceWaveform'
@@ -22,6 +24,7 @@ import ErrorHighlightedSentence from '../components/ErrorHighlightedSentence'
 import RealTimeCorrectionPanel from '../components/RealTimeCorrectionPanel'
 import VoiceMessageBubble from '../components/VoiceMessageBubble'
 import DailyGoalCard from '../components/DailyGoalCard'
+import ModeBadge from '../components/ModeBadge'
 import {
   playRecordStartSound,
   playRecordEndSound,
@@ -45,6 +48,9 @@ export default function ChatPage() {
 
   // 每日练习目标追踪
   const { addPractice } = useDailyGoal(300)
+
+  // v13: 输入模式管理（语音 / 文字）
+  const { mode: inputMode, isVoice, isText, setMode: setInputMode, toggleMode, onVoiceStart, onTextInput } = useInputMode()
 
   // 状态管理
   const { messages, setMessages, isRestored, clearConversation } = useConversationPersistence(`${sceneId}-l${levelIndex}`)
@@ -244,10 +250,15 @@ export default function ChatPage() {
     // 取消之前的流式请求
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
 
+    // v13: 根据实际发送渠道决定 inputMode（语音录音带 audioUrl = voice，纯文本 = text）
+    const effectiveMode = lastAudioUrl ? 'voice' : 'text'
+    setInputMode(effectiveMode, 'send')
+
     // v8: 把当前录制的语音 URL 和时长绑定到 userMsg（如果有）— 用于重播和气泡展示
     const userMsg = {
       role: 'user',
       content: trimmed,
+      inputMode: effectiveMode, // v13: 记录本条消息的输入模式
       ...(lastAudioUrl ? { audioUrl: lastAudioUrl, audioDuration: lastAudioDuration } : {}),
     }
     setMessages(prev => [...prev, userMsg])
@@ -358,6 +369,8 @@ export default function ChatPage() {
       setShowVipModal(true)
       return
     }
+    // v13: 开始录音 → 切换为语音模式
+    onVoiceStart()
     isHoldingBtnRef.current = true
     cancelBtnClickedRef.current = false
     pointerStartYRef.current = e.clientY
@@ -495,8 +508,13 @@ export default function ChatPage() {
       if (m.role === 'assistant' && m.corrections && m.corrections.length > 0) {
         // 找紧邻的用户消息
         let userText = ''
+        let userInputMode = 'voice'
         for (let j = i - 1; j >= 0; j--) {
-          if (messages[j].role === 'user') { userText = messages[j].content || ''; break }
+          if (messages[j].role === 'user') {
+            userText = messages[j].content || ''
+            userInputMode = messages[j].inputMode || (messages[j].audioUrl ? 'voice' : 'text')
+            break
+          }
         }
         // 收集所有 corrections
         const allCorrections = m.corrections
@@ -509,6 +527,7 @@ export default function ChatPage() {
           optimizedText: optimized,
           explanation,
           corrections: allCorrections,
+          inputMode: userInputMode, // v13: 模式感知
         }
       }
     }
@@ -563,6 +582,12 @@ export default function ChatPage() {
               {freeLimit - getUsage(sceneId)}/{freeLimit}
             </span>
           )}
+        </div>
+        {/* v13: 顶部全局模式指示器（醒目但低调） */}
+        <div className="flex items-center gap-1.5" title={MODE_META[inputMode].rule}>
+          <span className={`inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full border ${MODE_META[inputMode].bgClass} ${MODE_META[inputMode].textClass} ${MODE_META[inputMode].borderClass}`}>
+            {MODE_META[inputMode].short}
+          </span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
           {/* v7: 关卡选择按钮 */}
@@ -856,6 +881,7 @@ export default function ChatPage() {
         {isSupported && (
         <div className="flex gap-2 max-w-lg mx-auto">
           <input type="text" placeholder="或者直接输入英文..." autoFocus={false}
+            onFocus={onTextInput}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && e.target.value.trim()) {
                 playSendSound(); handleSend(e.target.value); e.target.value = ''
@@ -1017,6 +1043,7 @@ export default function ChatPage() {
                 optimizedText={latestCorrectionEntry.optimizedText}
                 explanation={latestCorrectionEntry.explanation}
                 corrections={latestCorrectionEntry.corrections}
+                inputMode={latestCorrectionEntry.inputMode}
                 onPlay={(t) => speak(t, { rate: ttsRate })}
                 variant="sidebar"
               />
@@ -1049,6 +1076,7 @@ export default function ChatPage() {
                   optimizedText={latestCorrectionEntry.optimizedText}
                   explanation={latestCorrectionEntry.explanation}
                   corrections={latestCorrectionEntry.corrections}
+                  inputMode={latestCorrectionEntry.inputMode}
                   onPlay={(t) => speak(t, { rate: ttsRate })}
                   onClose={() => setShowCorrectionDrawer(false)}
                   variant="drawer"
@@ -1174,6 +1202,12 @@ const MessageBubble = memo(function MessageBubble({ message, onReplay, onWordCli
       </div>
 
       <div className={`max-w-[82%] sm:max-w-[75%] space-y-1.5`}>
+        {/* v13: 用户消息顶部加模式小标签（语音/文字）— 不影响布局 */}
+        {isUser && (
+          <div className="flex justify-end pr-0.5">
+            <ModeBadge mode={message.inputMode || (message.audioUrl ? 'voice' : 'text')} size="sm" />
+          </div>
+        )}
         <div className={`rounded-2xl px-3.5 sm:px-4 py-2.5 sm:py-3 text-[14px] sm:text-[15px] leading-relaxed shadow-lg
           ${isUser ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-gray-100 rounded-tl-sm border border-white/5'}`}>
           {isUser || !onWordClick
@@ -1187,7 +1221,7 @@ const MessageBubble = memo(function MessageBubble({ message, onReplay, onWordCli
 
         {/* AI 评分可视化 — 图表形式展示在语段下方 */}
         {!isUser && (message.score != null || message.dimensions) && (
-          <ScoreVisualizer score={message.score} dimensions={message.dimensions} />
+          <ScoreVisualizer score={message.score} dimensions={message.dimensions} inputMode={message.inputMode || 'voice'} />
         )}
 
         {/* 操作栏 */}
@@ -1259,10 +1293,17 @@ const MessageBubble = memo(function MessageBubble({ message, onReplay, onWordCli
 })
 
 /**
- * 评分可视化组件 — 以进度条+环形图组合形式展示在语段下方
- * 替代原来的文字标签，更直观
+ * v13: 评分可视化组件 — 模式感知
+ *
+ * - 语音模式：发音 + 自信度 + 语法 + 词汇（4 维）
+ * - 文字模式：表达地道分 + 语法 + 词汇（3 维）
+ *
+ * Props:
+ *  - score: 总分
+ *  - dimensions: { ... } 原始维度
+ *  - inputMode: 'voice' | 'text'
  */
-const ScoreVisualizer = memo(function ScoreVisualizer({ score, dimensions }) {
+const ScoreVisualizer = memo(function ScoreVisualizer({ score, dimensions, inputMode = 'voice' }) {
   const s = score ?? 0
   // 总体评分颜色
   const ringColor = s >= 80 ? '#22c55e' : s >= 60 ? '#eab308' : '#ef4444'
@@ -1270,19 +1311,38 @@ const ScoreVisualizer = memo(function ScoreVisualizer({ score, dimensions }) {
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (s / 100) * circumference
 
-  // 维度配置：图标、颜色、标签
-  const dimConfig = {
-    fluency:     { icon: '💬', label: '流利度', color: '#06b6d4', bg: 'rgba(6,182,212,0.12)' },
+  // v13: 根据 inputMode 动态选择维度
+  const dimConfig = inputMode === 'text' ? {
+    // 文字模式：3 维，无发音、无自信度
+    expression: { icon: '✨', label: '表达地道', color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
+    grammar:    { icon: '📝', label: '语法',     color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+    vocabulary: { icon: '📖', label: '词汇',     color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
+  } : {
+    // 语音模式：4 维
+    pronunciation:{ icon: '🗣️', label: '发音',   color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
+    confidence:  { icon: '💪', label: '自信度', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
     grammar:     { icon: '📝', label: '语法',   color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
     vocabulary:  { icon: '📖', label: '词汇',   color: '#f472b6', bg: 'rgba(244,114,182,0.12)' },
-    pronunciation:{ icon: '🗣️', label: '发音',  color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
-    confidence:  { icon: '✨', label: '自信',   color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
   }
 
   const dims = dimensions ? Object.entries(dimensions).filter(([, v]) => v != null) : []
+  const modeMeta = inputMode === 'text'
+    ? { label: '文字模式', color: 'indigo', border: 'border-indigo-400/30', bg: 'bg-indigo-500/10' }
+    : { label: '语音模式', color: 'emerald', border: 'border-emerald-400/30', bg: 'bg-emerald-500/10' }
 
   return (
-    <div className="mt-2 pt-2 border-t border-white/5 space-y-2" role="img" aria-label={`评分: ${s}分`}>
+    <div className="mt-2 pt-2 border-t border-white/5 space-y-2" role="img" aria-label={`${modeMeta.label}评分: ${s}分`}>
+      {/* v13: 模式标识 + 规则说明 */}
+      <div className="flex items-center justify-between gap-2">
+        <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${modeMeta.bg} ${modeMeta.border}`}
+          style={{ color: modeMeta.color === 'indigo' ? '#a5b4fc' : '#6ee7b7' }}>
+          {inputMode === 'text' ? '✏️' : '🎤'} {modeMeta.label}
+        </span>
+        <span className="text-[9px] text-slate-500 leading-tight hidden sm:inline">
+          {getModeRuleText(inputMode)}
+        </span>
+      </div>
+
       {/* 上排：左侧环形总分 + 右侧维度进度条 */}
       <div className="flex items-center gap-3">
         {/* 环形总分 */}
@@ -1308,7 +1368,7 @@ const ScoreVisualizer = memo(function ScoreVisualizer({ score, dimensions }) {
         {dims.length > 0 && (
           <div className="flex-1 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(dims.length, 3)}, 1fr)` }}>
             {dims.map(([dim, val]) => {
-              const cfg = dimConfig[dim] || dimConfig.fluency
+              const cfg = dimConfig[dim] || dimConfig.grammar
               const v = Number(val) || 0
               return (
                 <div key={dim} className="space-y-1">
