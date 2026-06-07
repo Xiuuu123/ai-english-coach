@@ -52,7 +52,7 @@ export default function ChatPage() {
   // Hooks
   const { isListening, transcript, interimText, isSupported, startListening, stopListening, setTranscript } = useSpeechRecognition()
   const { speak, stop: stopTTS } = useTTS()
-  const { microphones, speakers, selectedMicId, selectedSpeakerId, setSelectedMicId, setSelectedSpeakerId, isDeviceReady, refreshDevices } = useAudioDevices()
+  const { microphones, speakers, selectedMicId, selectedSpeakerId, setSelectedMicId, setSelectedSpeakerId, isDeviceReady, error: deviceError, permission, refreshDevices } = useAudioDevices()
   const { state: progressState, recordSession } = useProgressTracker()
   const {
     vip,
@@ -75,6 +75,15 @@ export default function ChatPage() {
   useEffect(() => {
     prewarmConnection(sceneId)
   }, [sceneId])
+
+  // ====== v6: 进入页面时延迟 1s 预请求麦克风权限 ======
+  // 解决首次点击麦克风时设备 label 为空 / 设备列表加载慢的问题
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!isDeviceReady) refreshDevices()
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [sceneId]) // 只在场景切换时执行
 
   // ====== v3: 快捷短语 — 场景相关高频表达 ======
   const quickPhrases = useMemo(() => {
@@ -354,7 +363,7 @@ export default function ChatPage() {
               👑 VIP
             </button>
           )}
-          <DeviceSelector {...{ microphones, speakers, selectedMicId, selectedSpeakerId, onMicChange: setSelectedMicId, onSpeakerChange: setSelectedSpeakerId, isDeviceReady, refreshDevices }} />
+          <DeviceSelector {...{ microphones, speakers, selectedMicId, selectedSpeakerId, onMicChange: setSelectedMicId, onSpeakerChange: setSelectedSpeakerId, isDeviceReady, error: deviceError, permission, refreshDevices }} />
           <button onClick={() => setShowEndModal(true)}
             className="text-xs sm:text-sm font-medium px-2.5 sm:px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors active:scale-95">
             结束练习
