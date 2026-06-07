@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import SceneSelectPage from './pages/SceneSelectPage'
 import ChatPage from './pages/ChatPage'
 import SummaryPage from './pages/SummaryPage'
+import VipPage from './pages/VipPage'
 import { useToast, ToastContainer } from './components/Toast'
 import ErrorBoundary from './components/ErrorBoundary'
 
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="/" element={<SceneSelectPage />} />
         <Route path="/chat/:sceneId" element={<ChatPage />} />
         <Route path="/summary" element={<SummaryPage />} />
+        <Route path="/vip" element={<VipPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ToastContainer toasts={toasts} />

@@ -6,10 +6,12 @@ import { useTTS } from '../hooks/useTTS'
 import { useAudioDevices } from '../hooks/useAudioDevices'
 import { useConversationPersistence } from '../hooks/useConversationPersistence'
 import { useProgressTracker } from '../hooks/useProgressTracker'
+import { useMembership, FREE_CHAT_LIMIT } from '../hooks/useMembership'
 import { sendMessage, MAX_RETRIES, prewarmConnection } from '../services/chatService'
 import DeviceSelector from '../components/DeviceSelector'
 import PronunciationCard from '../components/PronunciationCard'
 import VoiceWaveform from '../components/VoiceWaveform'
+import MembershipModal from '../components/MembershipModal'
 import {
   playRecordStartSound,
   playRecordEndSound,
@@ -38,6 +40,9 @@ export default function ChatPage() {
   const [retryCount, setRetryCount] = useState(0)
   // v4: 结束练习确认弹窗
   const [showEndModal, setShowEndModal] = useState(false)
+  // v5: 会员开通弹窗
+  const [showVipModal, setShowVipModal] = useState(false)
+  const [vipModalReason, setVipModalReason] = useState('limit')
   const messagesEndRef = useRef(null)
   const lastSentRef = useRef('')
   const sendingRef = useRef(false)
@@ -49,6 +54,17 @@ export default function ChatPage() {
   const { speak, stop: stopTTS } = useTTS()
   const { microphones, speakers, selectedMicId, selectedSpeakerId, setSelectedMicId, setSelectedSpeakerId, isDeviceReady, refreshDevices } = useAudioDevices()
   const { state: progressState, recordSession } = useProgressTracker()
+  const {
+    vip,
+    freeUsage,
+    freeLimit,
+    getUsage,
+    getRemaining,
+    isLimitReached,
+    canSend,
+    consumeUsage,
+    activateVip,
+  } = useMembership()
 
   // 自动滚动到底部
   useEffect(() => {
@@ -118,8 +134,17 @@ export default function ChatPage() {
     if (!trimmed || isLoading || sendingRef.current) return
     if (trimmed === lastSentRef.current) return
 
+    // v5: 会员限制检查 — 非会员需消费一次免费次数
+    if (!canSend(sceneId)) {
+      setVipModalReason('limit')
+      setShowVipModal(true)
+      return
+    }
+
     lastSentRef.current = trimmed
     sendingRef.current = true
+    // 消费一次免费次数（会员直接返回 true）
+    consumeUsage(sceneId)
 
     // 取消之前的流式请求
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
@@ -190,7 +215,7 @@ export default function ChatPage() {
     sendingRef.current = false
     setIsLoading(false)
     setTranscript('')
-  }, [sceneId, messages, isLoading, selectedSpeakerId, retryCount])
+  }, [sceneId, messages, isLoading, selectedSpeakerId, retryCount, canSend, consumeUsage])
 
   /** 手动重试 */
   function handleRetry() {
@@ -213,6 +238,12 @@ export default function ChatPage() {
   function handlePointerDown(e) {
     e.preventDefault()
     if (isLoading) return
+    // v5: 会员限制 — 次数用完时禁止录音
+    if (!canSend(sceneId)) {
+      setVipModalReason('limit')
+      setShowVipModal(true)
+      return
+    }
     isHoldingBtnRef.current = true
     stopTTS()
     startListening()
@@ -282,8 +313,47 @@ export default function ChatPage() {
               🔥{progressState.streakDays}天
             </span>
           )}
+          {/* v5: 剩余次数徽章 */}
+          {vip ? (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+              style={{
+                background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 165, 0, 0.2) 100%)',
+                color: '#FFD700',
+                border: '1px solid rgba(255, 215, 0, 0.3)',
+              }}
+            >
+              👑 VIP
+            </span>
+          ) : (
+            <span
+              className={[
+                'text-[10px] px-1.5 py-0.5 rounded-full font-medium',
+                getRemaining(sceneId) <= 2
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                  : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30',
+              ].join(' ')}
+            >
+              {freeLimit - getUsage(sceneId)}/{freeLimit}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* v5: 开通 VIP 入口 */}
+          {!vip && (
+            <button
+              onClick={() => { setVipModalReason('feature'); setShowVipModal(true) }}
+              className="text-[10px] sm:text-xs font-medium px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg transition-all active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 165, 0, 0.15) 100%)',
+                color: '#FFD700',
+                border: '1px solid rgba(255, 215, 0, 0.3)',
+              }}
+              title="开通 VIP"
+            >
+              👑 VIP
+            </button>
+          )}
           <DeviceSelector {...{ microphones, speakers, selectedMicId, selectedSpeakerId, onMicChange: setSelectedMicId, onSpeakerChange: setSelectedSpeakerId, isDeviceReady, refreshDevices }} />
           <button onClick={() => setShowEndModal(true)}
             className="text-xs sm:text-sm font-medium px-2.5 sm:px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors active:scale-95">
@@ -400,28 +470,37 @@ export default function ChatPage() {
         {!isSupported ? (
           <p className="text-center text-red-400/70 text-sm py-3">不支持语音识别，请使用 Chrome 或下方输入</p>
         ) : (
-          <div className="flex justify-center">
-            <button
-              onPointerDown={handlePointerDown}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              onPointerLeave={handlePointerUp}
-              onContextMenu={(e) => e.preventDefault()}
-              disabled={isLoading}
-              data-listening={isListening || undefined}
-              className={`mic-btn w-[72px] h-[72px] sm:w-[72px] sm:h-[72px] rounded-full flex items-center justify-center text-white text-2xl
-                shadow-lg cursor-pointer select-none relative touch-manipulation outline-none
-                ${!isListening ? 'mic-btn-idle' : 'mic-btn-active'}
-              `}
-            >
-              🎤
-              {isListening && <span className="absolute inset-0 rounded-full bg-red-500/30 animate-ping" />}
-            </button>
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex justify-center">
+              <button
+                onPointerDown={handlePointerDown}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onPointerLeave={handlePointerUp}
+                onContextMenu={(e) => e.preventDefault()}
+                disabled={isLoading || !canSend(sceneId)}
+                data-listening={isListening || undefined}
+                className={`mic-btn w-[72px] h-[72px] sm:w-[72px] sm:h-[72px] rounded-full flex items-center justify-center text-white text-2xl
+                  shadow-lg cursor-pointer select-none relative touch-manipulation outline-none
+                  ${!isListening ? 'mic-btn-idle' : 'mic-btn-active'}
+                  ${!canSend(sceneId) ? 'mic-btn-locked' : ''}
+                `}
+              >
+                {canSend(sceneId) ? '🎤' : '🔒'}
+                {isListening && <span className="absolute inset-0 rounded-full bg-red-500/30 animate-ping" />}
+              </button>
+            </div>
+            {/* v5: 锁定状态提示 */}
+            {!canSend(sceneId) && (
+              <p className="text-[10px] text-red-400/80 font-medium">
+                免费次数已用完 · 开通 VIP 解锁
+              </p>
+            )}
           </div>
         )}
 
         <p className="text-center text-xs text-slate-500 mt-2 mb-3">
-          {isListening ? '🔴 松开发送' : '按住麦克风说话'}
+          {isListening ? '🔴 松开发送' : canSend(sceneId) ? '按住麦克风说话' : '🔒 次数已用完'}
           <span className="hidden sm:inline text-slate-600 ml-2">| 快捷键: Space 录音 / Esc 停止 / / 输入</span>
         </p>
 
@@ -496,6 +575,16 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+
+      {/* ===== v5: 会员开通弹窗 ===== */}
+      <MembershipModal
+        open={showVipModal}
+        reason={vipModalReason}
+        sceneName={scene?.name}
+        remaining={getRemaining(sceneId)}
+        onActivate={activateVip}
+        onClose={() => setShowVipModal(false)}
+      />
     </div>
   )
 }

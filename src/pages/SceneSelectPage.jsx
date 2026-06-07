@@ -57,6 +57,7 @@ export default function SceneSelectPage() {
           </div>
           <nav className="flex items-center gap-1">
             <NavLink to="/" label="首页" active={isActive('/')} onClick={() => navigate('/')} />
+            <NavLink to="/vip" label="VIP" active={isActive('/vip')} onClick={() => navigate('/vip')} />
             <NavLink to="/summary" label="报告" active={isActive('/summary')} onClick={() => navigate('/summary')} />
           </nav>
         </div>
