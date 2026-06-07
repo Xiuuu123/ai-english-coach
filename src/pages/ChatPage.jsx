@@ -17,6 +17,7 @@ import LevelSelect from '../components/LevelSelect'
 import BadgeModal from '../components/BadgeModal'
 import WordPopup, { tokenizeForRender } from '../components/WordPopup'
 import TTSControlBar, { useTTSSettings } from '../components/TTSControlBar'
+import ErrorHighlightedSentence from '../components/ErrorHighlightedSentence'
 import {
   playRecordStartSound,
   playRecordEndSound,
@@ -513,6 +514,14 @@ export default function ChatPage() {
         {/* 消息渲染 — v5: 使用 deferredMessages 减少流式输出时的重渲染 */}
         {isRestored && deferredMessages.map((msg, idx) => {
           const isLastUser = msg.role === 'user' && idx === [...messages].reverse().findIndex(m => m.role === 'user') === 0
+          // v8: 找到紧邻该 AI 消息之前的那条用户消息（用于错误高亮）
+          const prevUserText = (() => {
+            if (msg.role !== 'assistant') return null
+            for (let i = idx - 1; i >= 0; i--) {
+              if (deferredMessages[i].role === 'user') return deferredMessages[i].content
+            }
+            return null
+          })()
           return (
             <div key={idx}>
               <MessageBubble
@@ -520,6 +529,24 @@ export default function ChatPage() {
                 onReplay={(t) => speak(t, { rate: ttsRate })}
                 onWordClick={msg.role === 'assistant' ? (word, rect) => setWordPopup({ word, anchorRect: rect }) : undefined}
               />
+              {/* v8: AI 纠错时在用户原句上单词级高亮 */}
+              {msg.role === 'assistant' && msg.corrections?.length > 0 && prevUserText && (
+                <div className="mx-3 sm:mx-4 mt-1 mb-2 p-2.5 sm:p-3 rounded-xl bg-slate-900/60 border border-white/5 animate-fade-in">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-[10px] text-slate-400 font-medium">原文高亮</span>
+                    <span className="text-[9px] text-slate-500">·</span>
+                    <span className="text-[9px] text-slate-500">点击单词查看修改建议</span>
+                  </div>
+                  <ErrorHighlightedSentence
+                    text={prevUserText}
+                    errors={msg.corrections.map(c => ({
+                      word: c.original || c.word,
+                      type: c.type,
+                      suggestion: c.correction || c.suggestion || c.explanation,
+                    }))}
+                  />
+                </div>
+              )}
               {isLastUser && msg.content && (
                 <PronunciationCard spokenText={msg.content} />
               )}
