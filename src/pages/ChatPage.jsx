@@ -554,7 +554,30 @@ export default function ChatPage() {
         </div>
 
         {!isSupported ? (
-          <p className="text-center text-red-400/70 text-sm py-3">不支持语音识别，请使用 Chrome 或下方输入</p>
+          // v8: 不支持语音识别 — 文字输入作为主要输入方式
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-center text-amber-400/80 text-xs leading-relaxed">
+              此设备不支持语音输入，请使用下方文字输入
+            </p>
+            <div className="flex gap-2 w-full max-w-md">
+              <input type="text" placeholder="输入英文..." autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.target.value.trim()) {
+                    playSendSound(); handleSend(e.target.value); e.target.value = ''
+                  }
+                }}
+                className="flex-1 text-sm bg-slate-800 border border-white/10 rounded-xl px-3.5 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent"
+              />
+              <button onClick={(e) => {
+                const input = e.target.parentElement.querySelector('input')
+                if (input?.value.trim()) { playSendSound(); handleSend(input.value); input.value = '' }
+              }}
+                disabled={isLoading}
+                className="px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-500 disabled:opacity-50 transition-colors active:scale-95">
+                发送
+              </button>
+            </div>
+          </div>
         ) : networkError ? (
           // v8: 网络/服务不可达错误提示
           <div className="flex flex-col items-center gap-2">
@@ -596,12 +619,15 @@ export default function ChatPage() {
           </div>
         )}
 
+        {isSupported && (
         <p className="text-center text-xs text-slate-500 mt-2 mb-3">
           {isListening ? '🔴 松开发送' : canSend(sceneId) ? '按住麦克风说话' : '🔒 次数已用完'}
           <span className="hidden sm:inline text-slate-600 ml-2">| 快捷键: Space 录音 / Esc 停止 / / 输入</span>
         </p>
+        )}
 
-        {/* 文字输入 */}
+        {/* 文字输入 — 不支持语音时已在上方展示，此处隐藏 */}
+        {isSupported && (
         <div className="flex gap-2 max-w-lg mx-auto">
           <input type="text" placeholder="或者直接输入英文..." autoFocus={false}
             onKeyDown={(e) => {
@@ -620,6 +646,7 @@ export default function ChatPage() {
             发送
           </button>
         </div>
+        )}
 
         {/* v3: 快捷短语 — 点击即发送 */}
         {quickPhrases.length > 0 && (
