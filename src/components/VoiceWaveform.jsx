@@ -104,7 +104,7 @@ export default function VoiceWaveform({ isActive, color = '#ef4444' }) {
       const height = canvas.height
       ctx.clearRect(0, 0, width, height)
 
-      const barCount = 32
+      const barCount = barCountProp
       const barWidth = Math.max(1, (width / barCount) - 2)
 
       for (let i = 0; i < barCount; i++) {
@@ -150,8 +150,8 @@ export default function VoiceWaveform({ isActive, color = '#ef4444' }) {
     ctx.stroke()
 
     // 画几个小点表示待命
-    for (let i = 0; i < 32; i++) {
-      const x = i * (width / 32) + width / 64
+    for (let i = 0; i < barCountProp; i++) {
+      const x = i * (width / barCountProp) + width / (barCountProp * 2)
       ctx.fillStyle = '#1e293b'
       ctx.beginPath()
       ctx.arc(x, height / 2, 1.2, 0, Math.PI * 2)

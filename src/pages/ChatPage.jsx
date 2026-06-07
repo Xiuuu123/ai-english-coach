@@ -461,9 +461,16 @@ export default function ChatPage() {
         />
       )}
 
-      {/* 底部输入区 */}
-      <footer className="px-3 sm:px-4 pb-6 pt-2.5 bg-slate-900/80 backdrop-blur-md border-t border-white/5 safe-area-bottom max-w-3xl mx-auto w-full">
-        {isListening && <VoiceWaveform isActive={isListening} color="#ef4444" />}
+      {/* 底部输入区 — 录音按钮位置固定 */}
+      <footer className="relative px-3 sm:px-4 pb-6 pt-2.5 bg-slate-900/80 backdrop-blur-md border-t border-white/5 safe-area-bottom max-w-3xl mx-auto w-full">
+        {/* 波形固定在 footer 顶部，按钮位置不变 */}
+        {isListening && (
+          <div className="absolute left-0 right-0 -top-[58px] h-[50px] flex items-end justify-center pointer-events-none animate-fade-in">
+            <div className="bg-slate-900/70 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-2 shadow-2xl">
+              <VoiceWaveform isActive={isListening} color="#ef4444" barCount={28} height={36} />
+            </div>
+          </div>
+        )}
 
         {/* 临时文本显示区：固定高度防布局抖动 */}
         <div className="h-[28px] flex items-center justify-center mb-1.5">
