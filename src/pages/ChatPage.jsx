@@ -66,7 +66,7 @@ export default function ChatPage() {
   const abortRef = useRef(null)
 
   // Hooks
-  const { isListening, transcript, interimText, isSupported, networkError, startListening, stopListening, setTranscript } = useSpeechRecognition()
+  const { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, startListening, stopListening, setTranscript } = useSpeechRecognition()
   const { speak, stop: stopTTS } = useTTS()
   const { microphones, speakers, selectedMicId, selectedSpeakerId, setSelectedMicId, setSelectedSpeakerId, isDeviceReady, error: deviceError, permission, refreshDevices } = useAudioDevices()
   const { state: progressState, recordSession } = useProgressTracker()
@@ -209,7 +209,12 @@ export default function ChatPage() {
     // 取消之前的流式请求
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
 
-    const userMsg = { role: 'user', content: trimmed }
+    // v8: 把当前录制的语音 URL 绑定到 userMsg（如果有）— 用于重播
+    const userMsg = {
+      role: 'user',
+      content: trimmed,
+      ...(lastAudioUrl ? { audioUrl: lastAudioUrl } : {}),
+    }
     setMessages(prev => [...prev, userMsg])
     setIsLoading(true)
     setError(null)
@@ -832,6 +837,27 @@ const WelcomeCard = memo(function WelcomeCard({ scene, onStart }) {
 /** 消息气泡 — v2 增加多维度评分展示（React.memo 优化） */
 const MessageBubble = memo(function MessageBubble({ message, onReplay }) {
   const isUser = message.role === 'user'
+  const userAudioRef = useRef(null)  // v8: 用户语音重播 ref
+  const [userAudioPlaying, setUserAudioPlaying] = useState(false)
+
+  // v8: 重播用户自己的语音
+  const replayUserAudio = () => {
+    if (!message.audioUrl) return
+    if (!userAudioRef.current) {
+      userAudioRef.current = new Audio(message.audioUrl)
+      userAudioRef.current.onended = () => setUserAudioPlaying(false)
+      userAudioRef.current.onerror = () => setUserAudioPlaying(false)
+    }
+    if (userAudioPlaying) {
+      userAudioRef.current.pause()
+      userAudioRef.current.currentTime = 0
+      setUserAudioPlaying(false)
+    } else {
+      userAudioRef.current.currentTime = 0
+      userAudioRef.current.play().catch(() => setUserAudioPlaying(false))
+      setUserAudioPlaying(true)
+    }
+  }
 
   return (
     <div className={`flex items-start gap-2.5 sm:gap-3 message-enter ${isUser ? 'flex-row-reverse' : ''}`} role="article" aria-label={`${isUser ? '用户' : 'AI'}消息`}>
@@ -868,6 +894,19 @@ const MessageBubble = memo(function MessageBubble({ message, onReplay }) {
                 🔧 {message.corrections.length}处纠正
               </span>
             )}
+          </div>
+        )}
+
+        {/* v8: 用户语音重播按钮 — 仅在语音输入时显示 */}
+        {isUser && message.audioUrl && (
+          <div className="flex justify-end pr-0.5">
+            <button onClick={replayUserAudio}
+              className={`text-[11px] sm:text-xs flex items-center gap-0.5 transition-colors ${
+                userAudioPlaying ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-300'
+              }`}
+              aria-label={userAudioPlaying ? '停止重播' : '回听我的语音'}>
+              {userAudioPlaying ? '⏹️ 停止' : '🎙️ 回听我的声音'}
+            </button>
           </div>
         )}
 

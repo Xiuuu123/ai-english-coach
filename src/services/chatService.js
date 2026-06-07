@@ -86,7 +86,12 @@ PRONUNCIATION FEEDBACK:
 - Format: [Pronunciation] word → sounds like → meaning changes to → correct pronunciation tip
 - Example: "beach" mispronounced as "bitch" → completely different meaning → keep tongue low for /iː/
 - Link pronunciation errors to semantic confusion: "If you say X, it sounds like Y, which means Z."
-- Include at most 2 pronunciation tips per response.`
+- Include at most 2 pronunciation tips per response.
+
+CORRECTION OUTPUT RULES:
+- If the user's sentence has NO errors, do NOT output any [Correction] block. Just give a short praise in [Reply] (e.g., "Perfect grammar!", "No errors detected.", "Well done!").
+- Only output [Correction] block when there is at least one real error to fix.
+- If the user has no error, keep the response short and encouraging.`
 
   const messages = [
     { role: 'system', content: systemPrompt + pronunciationInstruction },
@@ -413,8 +418,12 @@ function parseCorrectionsV2(text) {
     }
   }
 
-  // 兜底
+  // 兜底：仅在文本中明确指出"无错误"时跳过
   if (corrections.length === 0 && text.length > 5) {
+    // v8: AI 明确说"无错误"时，不生成伪纠错
+    if (/no\s+errors?\s+(detected|found)|perfect|well\s+done|all\s+correct|语法正确|没有错误|表达得不错|nothing\s+to\s+correct/i.test(text)) {
+      return []
+    }
     let type = 'other'
     for (const [t, keywords] of Object.entries(typeKeywords)) {
       if (keywords.some(k => text.toLowerCase().includes(k.toLowerCase()))) { type = t; break }

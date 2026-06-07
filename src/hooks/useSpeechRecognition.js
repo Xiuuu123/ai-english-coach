@@ -52,6 +52,49 @@ export function useSpeechRecognition() {
     }
   }, [])
 
+  // v8: 录制用户麦克风音频用于回放（MediaRecorder）
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const lastAudioBlobRef = useRef(null)       // 最近一次完成的 Blob
+  const [lastAudioUrl, setLastAudioUrl] = useState(null)  // 回放 URL
+
+  function startMediaRecording() {
+    try {
+      // 复用 recognition 创建时打开的麦克风流（getUserMedia）
+      // SpeechRecognition 内部会管理麦克风，MediaRecorder 单独拿一份
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        const mr = new MediaRecorder(stream)
+        audioChunksRef.current = []
+        mr.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunksRef.current.push(e.data)
+        }
+        mr.onstop = () => {
+          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+          // 释放旧 URL
+          if (lastAudioBlobRef.current) {
+            try { URL.revokeObjectURL(lastAudioUrl) } catch {}
+          }
+          lastAudioBlobRef.current = blob
+          setLastAudioUrl(URL.createObjectURL(blob))
+          // 关闭 stream
+          stream.getTracks().forEach(t => t.stop())
+        }
+        mediaRecorderRef.current = mr
+        mr.start()
+      }).catch(() => {
+        // 麦克风权限被拒或不支持时静默失败，不影响语音识别
+      })
+    } catch {}
+  }
+
+  function stopMediaRecording() {
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop()
+      }
+    } catch {}
+  }
+
   function cleanup() {
     if (recognitionRef.current) {
       try { recognitionRef.current.abort() } catch {}
@@ -219,6 +262,9 @@ export function useSpeechRecognition() {
     setNetworkError(null)      // v8: 重置网络错误状态
     networkRetryRef.current = 0 // v8: 重置网络重试计数
 
+    // v8: 同步开始录制用户麦克风（用于回放）
+    startMediaRecording()
+
     createAndStart(newSessionId)
   }, [isSupported])
 
@@ -230,6 +276,9 @@ export function useSpeechRecognition() {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop() } catch {}
     }
+
+    // v8: 停止录制
+    stopMediaRecording()
 
     const finalText = accumulatedRef.current
     if (finalText?.trim()) {
@@ -246,5 +295,5 @@ export function useSpeechRecognition() {
     }
   }, [])
 
-  return { isListening, transcript, interimText, isSupported, networkError, startListening, stopListening, setTranscript }
+  return { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, startListening, stopListening, setTranscript }
 }
