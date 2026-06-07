@@ -176,7 +176,15 @@ export default function ChatPage() {
             stopTTS()
             startListening()
             playRecordStartSound()
+            // v9: 键盘录音也启动计时器
+            setRecordingSeconds(0)
+            recordingTimerRef.current = setInterval(() => {
+              setRecordingSeconds(s => s + 1)
+            }, 1000)
           } else if (isListening) {
+            // v9: 清除计时器
+            if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null }
+            setRecordingSeconds(0)
             stopListening()
             playRecordEndSound()
             const text = (transcript || interimText)?.trim() || ''
@@ -317,8 +325,15 @@ export default function ChatPage() {
   const isHoldingBtnRef = useRef(false)
   const transcriptRef = useRef('')
   const interimTextRef = useRef('')
-  // v8: 微信式上滑取消 — 记录按下时的 Y 坐标
+  // v9: 微信式上滑取消 — 记录按下时的 Y 坐标（仅移动端用）
   const pointerStartYRef = useRef(0)
+  // v9: 桌面端取消按钮 — 标记是否通过点击取消按钮触发
+  const cancelBtnClickedRef = useRef(false)
+  // v9: 区分桌面端（鼠标）和移动端（触摸）
+  const isDesktopRef = useRef(typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches)
+  // v9: 实时录音秒数
+  const [recordingSeconds, setRecordingSeconds] = useState(0)
+  const recordingTimerRef = useRef(null)
 
   // 同步 transcript/interimText 到 ref（供 handlePointerUp 读取最新值）
   useEffect(() => { transcriptRef.current = transcript }, [transcript])
@@ -334,22 +349,38 @@ export default function ChatPage() {
       return
     }
     isHoldingBtnRef.current = true
-    // v8: 记录按下时的 Y 坐标（用于上滑取消的距离判断）
+    cancelBtnClickedRef.current = false
     pointerStartYRef.current = e.clientY
     setIsCancelMode(false)
     stopTTS()
     startListening()
     playRecordStartSound()
+    // v9: 启动实时计时器
+    setRecordingSeconds(0)
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingSeconds(s => s + 1)
+    }, 1000)
   }
 
   function handlePointerUp() {
     if (!isHoldingBtnRef.current) return
     isHoldingBtnRef.current = false
-    // v8: 微信式上滑取消 — 如果处于取消模式，则终止录音且不发送
-    if (isCancelMode) {
+    // v9: 清除计时器
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null }
+    setRecordingSeconds(0)
+
+    // v9: 桌面端 — 如果点击了取消按钮，则终止录音
+    if (isDesktopRef.current && cancelBtnClickedRef.current) {
+      cancelBtnClickedRef.current = false
       cancelListening()
       setIsCancelMode(false)
-      // 轻提示音效（不计入使用次数）
+      playRecordEndSound()
+      return
+    }
+    // v9: 移动端 — 上滑取消
+    if (!isDesktopRef.current && isCancelMode) {
+      cancelListening()
+      setIsCancelMode(false)
       playRecordEndSound()
       return
     }
@@ -361,15 +392,22 @@ export default function ChatPage() {
     if (text) { playSendSound(); handleSend(text) }
   }
 
-  // v8: 微信式上滑取消 — 追踪指针 Y 偏移
-  // 当向上滑动超过阈值（默认 80px）时进入取消模式
-  const CANCEL_THRESHOLD = 80  // px
+  // v9: 桌面端取消按钮点击
+  function handleCancelBtnClick(e) {
+    e.stopPropagation()
+    e.preventDefault()
+    cancelBtnClickedRef.current = true
+    // 不立即取消，等 mouseup 时统一处理
+  }
+
+  // v9: 移动端上滑取消 — 追踪指针 Y 偏移（仅移动端生效）
+  const CANCEL_THRESHOLD = 50  // px（移动端阈值）
   function handlePointerMove(e) {
+    // 桌面端：不追踪移动，完全由取消按钮控制
+    if (isDesktopRef.current) return
+    // 移动端：上滑超过阈值进入取消模式
     if (!isHoldingBtnRef.current || !isListening) return
-    // pointerY: 当前指针 Y 坐标
-    // startY: 按下时的 Y 坐标（用按钮 rect 顶部作为参考）
     const dy = e.clientY - (pointerStartYRef.current ?? e.clientY)
-    // 向上滑：dy 为负
     if (-dy >= CANCEL_THRESHOLD && !isCancelMode) {
       setIsCancelMode(true)
     } else if (-dy < CANCEL_THRESHOLD && isCancelMode) {
@@ -384,6 +422,16 @@ export default function ChatPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [showEndModal])
+
+  // v9: 组件卸载时清理计时器
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current)
+        recordingTimerRef.current = null
+      }
+    }
+  }, [])
 
   // 结束练习 → 记录进度
   function handleFinish() {
@@ -670,7 +718,7 @@ export default function ChatPage() {
         {isListening && (
           <div className="absolute left-0 right-0 -top-[58px] h-[50px] flex items-end justify-center pointer-events-none animate-fade-in">
             <div className="bg-slate-900/70 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-2 shadow-2xl">
-              <VoiceWaveform isActive={isListening} color="#ef4444" barCount={28} height={36} />
+              <VoiceWaveform isActive={isListening} color={isCancelMode ? '#f59e0b' : '#ef4444'} barCount={28} height={36} />
             </div>
           </div>
         )}
@@ -723,7 +771,19 @@ export default function ChatPage() {
             </button>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-1 relative">
+            {/* v9: 桌面端 — 录音中的取消按钮（悬浮在麦克风上方） */}
+            {isListening && isDesktopRef.current && (
+              <button
+                onMouseDown={handleCancelBtnClick}
+                onTouchStart={handleCancelBtnClick}
+                className="absolute -top-10 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-red-500/30 backdrop-blur-sm border border-red-400/30 text-red-200 text-xs font-medium
+                  hover:bg-red-500/50 hover:border-red-400/50 active:scale-95 transition-all cursor-pointer select-none z-10 shadow-lg shadow-red-500/10"
+                aria-label="取消录音"
+              >
+                <span className="mr-1">✕</span>取消
+              </button>
+            )}
             <div className="flex justify-center">
               <button
                 onPointerDown={handlePointerDown}
@@ -743,10 +803,17 @@ export default function ChatPage() {
                 `}
               >
                 {canSend(sceneId) ? (isCancelMode ? '↩' : '🎤') : '🔒'}
+                {/* v9: 录音中波纹 — 桌面端红色 / 移动端取消时琥珀色 */}
                 {isListening && !isCancelMode && <span className="absolute inset-0 rounded-full bg-red-500/30 animate-ping" />}
                 {isListening && isCancelMode && <span className="absolute inset-0 rounded-full bg-amber-500/30 animate-ping" />}
               </button>
             </div>
+            {/* v9: 录音时长显示 */}
+            {isListening && (
+              <p className="text-[11px] font-mono text-red-400/90 font-medium">
+                {recordingSeconds}s
+              </p>
+            )}
             {/* v5: 锁定状态提示 */}
             {!canSend(sceneId) && (
               <p className="text-[10px] text-red-400/80 font-medium">
@@ -759,7 +826,7 @@ export default function ChatPage() {
         {isSupported && (
         <p className={`text-center text-xs mt-2 mb-3 transition-colors ${isCancelMode ? 'text-amber-400' : isListening ? 'text-red-400' : 'text-slate-500'}`}>
           {isListening
-            ? (isCancelMode ? '↩ 松开取消发送' : '🔴 松开发送 · 上滑取消')
+            ? (isCancelMode ? '↩ 松开取消发送' : (isDesktopRef.current ? '🔴 录音中 · 点击上方取消按钮可终止' : '🔴 松开发送 · 上滑取消'))
             : (canSend(sceneId) ? '按住麦克风说话' : '🔒 次数已用完')}
           <span className="hidden sm:inline text-slate-600 ml-2">| 快捷键: Space 录音 / Esc 停止 / / 输入</span>
         </p>
