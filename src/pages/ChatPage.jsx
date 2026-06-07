@@ -341,14 +341,28 @@ export default function ChatPage() {
     // 记录本次会话到进度追踪器
     const scores = messages.filter(m => m.role === 'assistant' && m.score !== null).map(m => m.score)
     const allCorrections = messages.flatMap(m => m.corrections || [])
+    // v8: 收集维度分数和词数统计
+    const allDimensions = {}
+    const dimKeys = ['fluency', 'grammar', 'vocabulary', 'pronunciation', 'confidence']
+    const dimScores = messages.filter(m => m.role === 'assistant' && m.dimensions)
+    dimKeys.forEach(key => {
+      const vals = dimScores.map(m => m.dimensions?.[key]).filter(v => v != null)
+      if (vals.length > 0) allDimensions[key] = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+    })
+    const totalWords = messages.filter(m => m.role === 'user')
+      .reduce((s, m) => s + (m.content ? m.content.split(/\s+/).filter(w => w).length : 0), 0)
     recordSession({
       sceneId,
+      sceneName: scene?.name || sceneId,
       messageCount: messages.filter(m => m.role === 'user').length,
       corrections: allCorrections.length,
       averageScore: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0,
       scores,
       correctionTypes: allCorrections.map(c => c.type).filter(Boolean),
       correctionDetails: allCorrections.map(c => ({ original: c.original, corrected: c.corrected, type: c.type })),
+      dimensions: allDimensions,
+      totalWords,
+      levelIndex: levelIndex ?? 0,
     })
     // 保存本次会话到 sessionStorage 作为报告页备份（防止 navigate state 丢失）
     try {
@@ -875,6 +889,18 @@ const MessageBubble = memo(function MessageBubble({ message, onReplay }) {
                 <span className="text-red-400 line-through">{c.original}</span>
                 <span className="text-green-400">→</span>
                 <span className="text-green-300 font-medium">{c.corrected}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* v8: 发音+语义联动提示 — 解释发音错误如何影响语义 */}
+        {!isUser && message.pronunciationTips?.length > 0 && (
+          <div className="mt-2 space-y-1.5" role="list" aria-label="发音提示">
+            {message.pronunciationTips.map((tip, i) => (
+              <div key={i} className="bg-cyan-500/8 border border-cyan-500/15 rounded-lg px-2.5 py-1.5 text-[11px] sm:text-xs text-cyan-200/90 flex items-start gap-1.5" role="listitem">
+                <span className="shrink-0 mt-0.5">🗣️</span>
+                <span>{typeof tip === 'string' ? tip : (tip.text || tip.tip || JSON.stringify(tip))}</span>
               </div>
             ))}
           </div>

@@ -27,6 +27,8 @@ const DEFAULT_STATE = {
   wordBank: {},           // { "experience": { count: 3, type: "grammar", correct: "experience of" }, ... }
   /** v3: 错误历史 — 用于检测重复错误 */
   errorHistory: [],       // [{ original, corrected, type, date, sceneId }]
+  /** v8: 训练历史 — 详细记录每次练习会话 */
+  sessionHistory: [],     // [{ id, sceneId, sceneName, date, score, dimensions, wordCount, corrections, rounds, levelIndex }]
 }
 
 export function useProgressTracker() {
@@ -41,6 +43,7 @@ export function useProgressTracker() {
   const recordSession = useCallback((sessionData) => {
     const {
       sceneId,
+      sceneName,
       messageCount,
       corrections,
       averageScore,
@@ -48,6 +51,10 @@ export function useProgressTracker() {
       correctionTypes = [],
       /** v3: 纠错详情（含 original/corrected/type） */
       correctionDetails = [],
+      /** v8: 更多会话详情 */
+      dimensions = null,
+      totalWords = 0,
+      levelIndex = 0,
     } = sessionData
 
     setState(prev => {
@@ -122,6 +129,21 @@ export function useProgressTracker() {
       if (totalMsgs + messageCount >= 10 && !milestones.includes('10_messages')) milestones.push('10_messages')
       if (streakDays >= 3 && !milestones.includes('streak_3')) milestones.push('streak_3')
 
+      // v8: 训练历史记录 — 保留最近 50 条
+      const sessionEntry = {
+        id: `${today}-${prev.totalSessions + 1}`,
+        sceneId,
+        sceneName: sceneName || sceneId,
+        date: today,
+        score: averageScore,
+        dimensions: dimensions || {},
+        wordCount: totalWords,
+        corrections,
+        rounds: messageCount,
+        levelIndex,
+      }
+      const sessionHistory = [...prev.sessionHistory, sessionEntry].slice(-50)
+
       return {
         totalSessions: prev.totalSessions + 1,
         totalMessages: totalMsgs,
@@ -135,6 +157,7 @@ export function useProgressTracker() {
         milestones,
         wordBank,
         errorHistory: trimmedErrorHistory,
+        sessionHistory,
       }
     })
   }, [])

@@ -296,6 +296,49 @@ export default function SummaryPage() {
           </section>
         )}
 
+        {/* ===== v8: 长期能力成长档案 — 多会话趋势分析 ===== */}
+        {progressState?.sessionHistory?.length > 1 && (
+          <section className="bg-slate-900/50 rounded-2xl p-6 border border-white/5">
+            <h2 className="font-bold text-white mb-5 flex items-center gap-2">
+              📊 成长档案
+            </h2>
+
+            {/* 多会话分数趋势折线图 */}
+            <div className="mb-5">
+              <p className="text-xs text-slate-400 mb-3">历史得分趋势（近{Math.min(progressState.sessionHistory.length, 10)}次）</p>
+              <SessionTrendChart sessions={progressState.sessionHistory.slice(-10)} />
+            </div>
+
+            {/* 维度趋势 */}
+            {progressState.sessionHistory.some(s => s.dimensions && Object.keys(s.dimensions).length > 0) && (
+              <div className="mb-4">
+                <p className="text-xs text-slate-400 mb-3">能力维度趋势</p>
+                <DimensionTrendChart sessions={progressState.sessionHistory.slice(-10)} />
+              </div>
+            )}
+
+            {/* 历史会话列表 */}
+            <div>
+              <p className="text-xs text-slate-400 mb-3">历史练习记录</p>
+              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                {[...progressState.sessionHistory].reverse().slice(0, 15).map((s, i) => (
+                  <div key={i} className="flex items-center gap-3 bg-white/5 rounded-lg px-3 py-2 text-xs border border-white/5">
+                    <span className="text-slate-500 w-10 shrink-0">{s.date?.slice(5)}</span>
+                    <span className="text-slate-300 truncate flex-1 min-w-0">{s.sceneName || s.sceneId}</span>
+                    <span className={`font-bold shrink-0 ${s.score >= 80 ? 'text-green-400' : s.score >= 60 ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {s.score}分
+                    </span>
+                    <span className="text-slate-500 shrink-0">{s.rounds || 0}轮</span>
+                    {s.corrections > 0 && (
+                      <span className="text-orange-400/70 shrink-0">{s.corrections}纠</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* 能力雷达图 */}
         <section className="bg-slate-900/50 rounded-2xl p-6 border border-white/5">
           <h2 className="font-bold text-white mb-5 flex items-center gap-2">
@@ -780,6 +823,127 @@ function StatCard({ icon, label, value, color, border, highlight }) {
       <div className="text-2xl mb-1.5">{icon}</div>
       <div className={`text-2xl font-bold ${highlight ? 'text-green-400' : 'text-white'}`}>{value}</div>
       <div className="text-[11px] text-slate-400 mt-0.5">{label}</div>
+    </div>
+  )
+}
+
+/** ===== v8: 多会话分数趋势折线图（CSS 实现） ===== */
+function SessionTrendChart({ sessions }) {
+  if (!sessions.length) return null
+  const maxScore = Math.max(...sessions.map(s => s.score || 0), 1)
+  const minScore = Math.min(...sessions.map(s => s.score || 0), 100)
+  const range = maxScore - minScore || 1
+  const width = 100 / (sessions.length - 1 || 1)
+
+  // SVG 折线
+  const points = sessions.map((s, i) => {
+    const x = sessions.length === 1 ? 50 : (i / (sessions.length - 1)) * 100
+    const y = 100 - ((s.score - minScore + range * 0.1) / (range * 1.2)) * 100
+    return `${x},${y}`
+  }).join(' ')
+
+  return (
+    <div className="relative h-28">
+      <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+        {/* 网格线 */}
+        <line x1="0" y1="75" x2="100" y2="75" stroke="#334155" strokeWidth="0.3" strokeDasharray="2,2" />
+        <line x1="0" y1="50" x2="100" y2="50" stroke="#334155" strokeWidth="0.3" strokeDasharray="2,2" />
+        <line x1="0" y1="25" x2="100" y2="25" stroke="#334155" strokeWidth="0.3" strokeDasharray="2,2" />
+        {/* 填充区域 */}
+        <polygon
+          points={`0,100 ${points} 100,100`}
+          fill="url(#trendFill)"
+          fillOpacity="0.15"
+        />
+        {/* 折线 */}
+        <polyline
+          points={points}
+          fill="none"
+          stroke="url(#trendLine)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* 数据点 */}
+        {sessions.map((s, i) => {
+          const x = sessions.length === 1 ? 50 : (i / (sessions.length - 1)) * 100
+          const y = 100 - ((s.score - minScore + range * 0.1) / (range * 1.2)) * 100
+          const color = s.score >= 80 ? '#22c55e' : s.score >= 60 ? '#eab308' : '#ef4444'
+          return <circle key={i} cx={x} cy={y} r="2.5" fill={color} stroke="#0f172a" strokeWidth="1" />
+        })}
+        <defs>
+          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#818cf8" stopOpacity="1" />
+            <stop offset="100%" stopColor="#818cf8" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="trendLine" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#818cf8" />
+            <stop offset="100%" stopColor="#34d399" />
+          </linearGradient>
+        </defs>
+      </svg>
+      {/* X轴标签 */}
+      <div className="flex justify-between mt-1">
+        {sessions.map((s, i) => (
+          <span key={i} className="text-[9px] text-slate-500">{s.date?.slice(5)}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** ===== v8: 能力维度趋势（多维度微型折线图） ===== */
+function DimensionTrendChart({ sessions }) {
+  const dimKeys = ['fluency', 'grammar', 'vocabulary', 'pronunciation', 'confidence']
+  const dimConfig = {
+    fluency: { label: '流利度', color: '#06b6d4' },
+    grammar: { label: '语法', color: '#a78bfa' },
+    vocabulary: { label: '词汇', color: '#f472b6' },
+    pronunciation: { label: '发音', color: '#34d399' },
+    confidence: { label: '自信', color: '#fbbf24' },
+  }
+
+  const sessionsWithDims = sessions.filter(s => s.dimensions && Object.keys(s.dimensions).length > 0)
+  if (sessionsWithDims.length < 2) return null
+
+  return (
+    <div className="grid grid-cols-5 gap-1.5">
+      {dimKeys.map(key => {
+        const vals = sessionsWithDims.map(s => s.dimensions?.[key]).filter(v => v != null)
+        if (vals.length < 2) return null
+        const cfg = dimConfig[key]
+        const maxV = Math.max(...vals, 1)
+        const minV = Math.min(...vals, 100)
+        const range = maxV - minV || 1
+        const trend = vals[vals.length - 1] - vals[0]
+
+        return (
+          <div key={key} className="bg-white/5 rounded-lg p-2 text-center">
+            <div className="text-[11px] font-medium mb-1" style={{ color: cfg.color }}>{cfg.label}</div>
+            <div className="text-sm font-bold text-white">{vals[vals.length - 1]}</div>
+            <div className={`text-[10px] ${trend >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {trend >= 0 ? '↑' : '↓'}{Math.abs(trend)}
+            </div>
+            {/* 迷你趋势条 */}
+            <div className="flex items-end gap-0.5 h-6 mt-1.5 justify-center">
+              {vals.map((v, i) => {
+                const h = Math.max(((v - minV + range * 0.1) / (range * 1.2)) * 100, 10)
+                return (
+                  <div key={i}
+                    className="w-1.5 rounded-t-sm transition-all duration-500"
+                    style={{
+                      height: `${h}%`,
+                      background: cfg.color,
+                      opacity: i === vals.length - 1 ? 1 : 0.4,
+                      animation: `barGrow 0.5s ${i * 0.08}s ease-out both`,
+                    }}
+                  />
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

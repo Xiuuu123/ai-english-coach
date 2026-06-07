@@ -79,8 +79,17 @@ export async function sendMessage(sceneId, history, onStreamChunk, systemPromptO
     ? rawPrompt.slice(0, 800) + '...Keep responses concise.'
     : rawPrompt
 
+  // v8: 发音+语义联动纠错指令 — 追加到所有场景提示词末尾
+  const pronunciationInstruction = `
+PRONUNCIATION FEEDBACK:
+- Identify words the user might mispronounce and explain how wrong pronunciation changes meaning.
+- Format: [Pronunciation] word → sounds like → meaning changes to → correct pronunciation tip
+- Example: "beach" mispronounced as "bitch" → completely different meaning → keep tongue low for /iː/
+- Link pronunciation errors to semantic confusion: "If you say X, it sounds like Y, which means Z."
+- Include at most 2 pronunciation tips per response.`
+
   const messages = [
-    { role: 'system', content: systemPrompt },
+    { role: 'system', content: systemPrompt + pronunciationInstruction },
     ...formattedHistory,
   ]
 
@@ -309,10 +318,13 @@ function parseAIResponse(content) {
     const score = extractScore(replyText)
     const dimensions = extractDimensionScores(text)
 
+    // v8: 从文本中提取发音提示 [Pronunciation] 标签
+    const pronunciationTips = extractPronunciationTips(text)
+
     return {
       reply: cleanReply(replyText),
       corrections,
-      pronunciationTips: [],
+      pronunciationTips,
       score,
       dimensions,
     }
@@ -416,6 +428,33 @@ function parseCorrectionsV2(text) {
 /**
  * 提取多维度评分（从完整文本中搜索维度标记）
  */
+/**
+ * v8: 从 AI 回复中提取发音提示 [Pronunciation] 标签
+ */
+function extractPronunciationTips(text) {
+  const tips = []
+  // 匹配 [Pronunciation] 标签内容
+  const pronMatch = text.match(/\[Pronunciation\]([\s\S]*?)(?=\[|$)/i)
+  if (pronMatch) {
+    const lines = pronMatch[1].trim().split('\n').filter(Boolean)
+    lines.forEach(line => {
+      const cleaned = line.replace(/^[-•*]\s*/, '').trim()
+      if (cleaned) tips.push(cleaned)
+    })
+  }
+  // 也匹配行内 🗣️ 或 "pronunciation" 开头的提示
+  if (tips.length === 0) {
+    const inlineMatches = text.match(/(?:🗣️|pronunciation\s*tip)[:\s]*(.+?)(?:\n|$)/gi)
+    if (inlineMatches) {
+      inlineMatches.forEach(m => {
+        const cleaned = m.replace(/^(?:🗣️|pronunciation\s*tip)[:\s]*/i, '').trim()
+        if (cleaned) tips.push(cleaned)
+      })
+    }
+  }
+  return tips
+}
+
 function extractDimensionScores(text) {
   const dims = {}
   const patterns = {
