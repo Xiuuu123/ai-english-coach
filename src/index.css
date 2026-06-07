@@ -137,6 +137,14 @@ body {
   transition-duration: 0s;
 }
 
+/* v8: 上滑取消态 — 琥珀色（warning），与录音红色形成对比 */
+.mic-btn-cancel {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  box-shadow: 0 0 26px rgba(245,158,11,0.55), 0 10px 25px rgba(0,0,0,0.3) !important;
+  transform: scale(1.12) translateY(-6px) !important;
+  transition-duration: 0.15s;
+}
+
 /* v5: 锁定态 — 灰色 + 锁图标，不可点击 */
 .mic-btn-locked {
   background: linear-gradient(135deg, #475569 0%, #334155 100%) !important;

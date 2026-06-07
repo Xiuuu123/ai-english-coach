@@ -74,7 +74,7 @@ export default function ChatPage() {
   const abortRef = useRef(null)
 
   // Hooks
-  const { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, startListening, stopListening, setTranscript } = useSpeechRecognition()
+  const { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, isCancelMode, setIsCancelMode, startListening, stopListening, cancelListening, setTranscript } = useSpeechRecognition()
   const { speak, stop: stopTTS, setAccent: setTTSAccent } = useTTS()
   // v8: 口语对话控制栏设置（语速 / 口音 / 风格）
   const ttsSettings = useTTSSettings()
@@ -316,6 +316,8 @@ export default function ChatPage() {
   const isHoldingBtnRef = useRef(false)
   const transcriptRef = useRef('')
   const interimTextRef = useRef('')
+  // v8: 微信式上滑取消 — 记录按下时的 Y 坐标
+  const pointerStartYRef = useRef(0)
 
   // 同步 transcript/interimText 到 ref（供 handlePointerUp 读取最新值）
   useEffect(() => { transcriptRef.current = transcript }, [transcript])
@@ -331,6 +333,9 @@ export default function ChatPage() {
       return
     }
     isHoldingBtnRef.current = true
+    // v8: 记录按下时的 Y 坐标（用于上滑取消的距离判断）
+    pointerStartYRef.current = e.clientY
+    setIsCancelMode(false)
     stopTTS()
     startListening()
     playRecordStartSound()
@@ -339,12 +344,36 @@ export default function ChatPage() {
   function handlePointerUp() {
     if (!isHoldingBtnRef.current) return
     isHoldingBtnRef.current = false
+    // v8: 微信式上滑取消 — 如果处于取消模式，则终止录音且不发送
+    if (isCancelMode) {
+      cancelListening()
+      setIsCancelMode(false)
+      // 轻提示音效（不计入使用次数）
+      playRecordEndSound()
+      return
+    }
     stopListening()
     playRecordEndSound()
     // 从 ref 读取最新文本，避免闭包陷阱
     const text = (transcriptRef.current || interimTextRef.current)?.trim() || ''
     setTranscript('')
     if (text) { playSendSound(); handleSend(text) }
+  }
+
+  // v8: 微信式上滑取消 — 追踪指针 Y 偏移
+  // 当向上滑动超过阈值（默认 80px）时进入取消模式
+  const CANCEL_THRESHOLD = 80  // px
+  function handlePointerMove(e) {
+    if (!isHoldingBtnRef.current || !isListening) return
+    // pointerY: 当前指针 Y 坐标
+    // startY: 按下时的 Y 坐标（用按钮 rect 顶部作为参考）
+    const dy = e.clientY - (pointerStartYRef.current ?? e.clientY)
+    // 向上滑：dy 为负
+    if (-dy >= CANCEL_THRESHOLD && !isCancelMode) {
+      setIsCancelMode(true)
+    } else if (-dy < CANCEL_THRESHOLD && isCancelMode) {
+      setIsCancelMode(false)
+    }
   }
 
   // ====== v4: 快捷键 — ESC 关闭结束弹窗 ======
@@ -697,19 +726,23 @@ export default function ChatPage() {
               <button
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
+                onPointerMove={handlePointerMove}
                 onPointerCancel={handlePointerUp}
                 onPointerLeave={handlePointerUp}
                 onContextMenu={(e) => e.preventDefault()}
                 disabled={isLoading || !canSend(sceneId)}
                 data-listening={isListening || undefined}
+                data-cancel-mode={isCancelMode || undefined}
                 className={`mic-btn w-[72px] h-[72px] sm:w-[72px] sm:h-[72px] rounded-full flex items-center justify-center text-white text-2xl
                   shadow-lg cursor-pointer select-none relative touch-manipulation outline-none
                   ${!isListening ? 'mic-btn-idle' : 'mic-btn-active'}
                   ${!canSend(sceneId) ? 'mic-btn-locked' : ''}
+                  ${isCancelMode ? 'mic-btn-cancel' : ''}
                 `}
               >
-                {canSend(sceneId) ? '🎤' : '🔒'}
-                {isListening && <span className="absolute inset-0 rounded-full bg-red-500/30 animate-ping" />}
+                {canSend(sceneId) ? (isCancelMode ? '↩' : '🎤') : '🔒'}
+                {isListening && !isCancelMode && <span className="absolute inset-0 rounded-full bg-red-500/30 animate-ping" />}
+                {isListening && isCancelMode && <span className="absolute inset-0 rounded-full bg-amber-500/30 animate-ping" />}
               </button>
             </div>
             {/* v5: 锁定状态提示 */}
@@ -722,8 +755,10 @@ export default function ChatPage() {
         )}
 
         {isSupported && (
-        <p className="text-center text-xs text-slate-500 mt-2 mb-3">
-          {isListening ? '🔴 松开发送' : canSend(sceneId) ? '按住麦克风说话' : '🔒 次数已用完'}
+        <p className={`text-center text-xs mt-2 mb-3 transition-colors ${isCancelMode ? 'text-amber-400' : isListening ? 'text-red-400' : 'text-slate-500'}`}>
+          {isListening
+            ? (isCancelMode ? '↩ 松开取消发送' : '🔴 松开发送 · 上滑取消')
+            : (canSend(sceneId) ? '按住麦克风说话' : '🔒 次数已用完')}
           <span className="hidden sm:inline text-slate-600 ml-2">| 快捷键: Space 录音 / Esc 停止 / / 输入</span>
         </p>
         )}

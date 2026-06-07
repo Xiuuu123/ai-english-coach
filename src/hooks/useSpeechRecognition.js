@@ -21,8 +21,11 @@ export function useSpeechRecognition() {
   const [interimText, setInterimText] = useState('')
   const [isSupported, setIsSupported] = useState(true)
   const [networkError, setNetworkError] = useState(null) // v8: 网络/服务不可达错误
+  // v8: 微信式上滑取消状态
+  const [isCancelMode, setIsCancelMode] = useState(false)
   const recognitionRef = useRef(null)
   const isHoldingRef = useRef(false)
+  const isCancelRef = useRef(false)  // 标记本次录音是否已被取消（防止 onend 后又触发 onresult 提交）
   const accumulatedRef = useRef('')
   const sessionIdRef = useRef(0)
   // 连续失败计数（用于退避重试）
@@ -255,6 +258,8 @@ export function useSpeechRecognition() {
 
     const newSessionId = ++sessionIdRef.current
     isHoldingRef.current = true
+    isCancelRef.current = false  // v8: 重置取消标记
+    setIsCancelMode(false)       // v8: 重置取消状态
     accumulatedRef.current = ''
     setTranscript('')
     setInterimText('')
@@ -272,6 +277,7 @@ export function useSpeechRecognition() {
     ++sessionIdRef.current
     isHoldingRef.current = false
     setIsListening(false)
+    setIsCancelMode(false)  // v8: 重置取消状态
 
     if (recognitionRef.current) {
       try { recognitionRef.current.stop() } catch {}
@@ -295,5 +301,36 @@ export function useSpeechRecognition() {
     }
   }, [])
 
-  return { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, startListening, stopListening, setTranscript }
+  /**
+   * v8: 微信式上滑取消
+   * 触发时机：用户在录音过程中向上滑动并松开手指
+   * 效果：终止录音、清空所有累积文本、不返回任何转写结果
+   */
+  const cancelListening = useCallback(() => {
+    isCancelRef.current = true
+    isHoldingRef.current = false
+    setIsCancelMode(false)
+    setIsListening(false)
+    ++sessionIdRef.current
+    // 中止识别（不调用 stop()，避免触发 final result）
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort() } catch {}
+    }
+    // 停止录制并丢弃音频
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop() } catch {}
+    }
+    // 丢弃转写结果
+    accumulatedRef.current = ''
+    setTranscript('')
+    setInterimText('')
+    // 清理可能存在的回放 URL
+    if (lastAudioBlobRef.current) {
+      try { URL.revokeObjectURL(lastAudioBlobRef.current) } catch {}
+      lastAudioBlobRef.current = null
+      setLastAudioUrl(null)
+    }
+  }, [])
+
+  return { isListening, transcript, interimText, isSupported, networkError, lastAudioUrl, isCancelMode, setIsCancelMode, startListening, stopListening, cancelListening, setTranscript }
 }
