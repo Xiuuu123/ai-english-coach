@@ -29,17 +29,39 @@ jobs:
 
       - name: Setup env
         env:
-          # v16: 通过 env 块安全传递 Key，避免 sed 转义问题
+          # v17: 通过 env 块安全传递 Key，避免 sed 转义问题
           VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
           VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.deepseek.com/chat/completions' }}
           VITE_MODEL: ${{ vars.VITE_MODEL || 'deepseek-chat' }}
           VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
           VITE_APP_TITLE: ${{ vars.VITE_APP_TITLE || 'AI English Coach' }}
         run: |
-          # v16: 用 envsubst + 模板生成 .env，兼容 Key 中的任何特殊字符
-          export VITE_API_KEY VITE_API_URL VITE_MODEL VITE_BASE_PATH VITE_APP_TITLE
-          envsubst < .env.example > .env
-          echo "✅ .env 生成完成（API Key 长度: ${#VITE_API_KEY}）"
+          # v17: 用 Node.js 直接生成 .env（不依赖 envsubst / gettext，100% 兼容）
+          node -e "
+            const fs = require('fs');
+            const env = {
+              VITE_API_KEY: process.env.VITE_API_KEY,
+              VITE_API_URL: process.env.VITE_API_URL,
+              VITE_MODEL: process.env.VITE_MODEL,
+              VITE_BASE_PATH: process.env.VITE_BASE_PATH,
+              VITE_APP_TITLE: process.env.VITE_APP_TITLE,
+              VITE_API_TIMEOUT: '30000',
+              VITE_STREAM_ENABLED: 'true',
+              VITE_TEMPERATURE: '0.7',
+              VITE_TTS_RATE: '1.0',
+              VITE_TTS_PITCH: '1.0',
+              VITE_TTS_VOLUME: '1.0',
+              VITE_TTS_LANG: 'en-US',
+              VITE_FREE_QUOTA_PER_SCENE: '7',
+              VITE_VIP_COLOR: '#f59e0b'
+            };
+            const content = Object.entries(env)
+              .map(([k, v]) => \`\${k}=\${v}\`)
+              .join('\n') + '\n';
+            fs.writeFileSync('.env', content);
+            console.log('✅ .env 生成完成，API Key 长度:', (process.env.VITE_API_KEY || '').length);
+            if (!process.env.VITE_API_KEY) { console.error('❌ VITE_API_KEY 为空！'); process.exit(1); }
+          "
 
       - name: Install dependencies
         run: npm ci
