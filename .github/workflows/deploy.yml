@@ -28,9 +28,18 @@ jobs:
           cache: 'npm'
 
       - name: Setup env
+        env:
+          # v16: 通过 env 块安全传递 Key，避免 sed 转义问题
+          VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'https://api.deepseek.com/chat/completions' }}
+          VITE_MODEL: ${{ vars.VITE_MODEL || 'deepseek-chat' }}
+          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/' }}
+          VITE_APP_TITLE: ${{ vars.VITE_APP_TITLE || 'AI English Coach' }}
         run: |
-          cp .env.example .env
-          sed -i "s/your-api-key-here/${{ secrets.VITE_API_KEY }}/" .env
+          # v16: 用 envsubst + 模板生成 .env，兼容 Key 中的任何特殊字符
+          export VITE_API_KEY VITE_API_URL VITE_MODEL VITE_BASE_PATH VITE_APP_TITLE
+          envsubst < .env.example > .env
+          echo "✅ .env 生成完成（API Key 长度: ${#VITE_API_KEY}）"
 
       - name: Install dependencies
         run: npm ci
